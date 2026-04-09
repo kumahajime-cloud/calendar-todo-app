@@ -1,27 +1,28 @@
-const sharp = require('sharp');
+// Generate PWA icons with bear emoji
 const fs = require('fs');
 const path = require('path');
 
-const svgPath = path.join(__dirname, 'public/app-icon.svg');
-const outputDir = path.join(__dirname, 'public');
+// Create SVG with bear emoji
+const createSVG = (size) => `<?xml version="1.0" encoding="UTF-8"?>
+<svg width="${size}" height="${size}" xmlns="http://www.w3.org/2000/svg">
+  <rect width="${size}" height="${size}" fill="#1e3a8a" rx="${size * 0.15}"/>
+  <text 
+    x="50%" 
+    y="50%" 
+    font-size="${size * 0.6}" 
+    text-anchor="middle" 
+    dominant-baseline="central"
+    font-family="system-ui, -apple-system, sans-serif"
+  >🐻</text>
+</svg>`;
 
-const sizes = [192, 512];
+// Save SVG files
+const publicDir = path.join(__dirname, 'public');
 
-async function generateIcons() {
-  const svgBuffer = fs.readFileSync(svgPath);
+fs.writeFileSync(path.join(publicDir, 'icon-192.svg'), createSVG(192));
+fs.writeFileSync(path.join(publicDir, 'icon-512.svg'), createSVG(512));
 
-  for (const size of sizes) {
-    const outputPath = path.join(outputDir, `icon-${size}x${size}.png`);
-
-    await sharp(svgBuffer)
-      .resize(size, size)
-      .png()
-      .toFile(outputPath);
-
-    console.log(`✓ Generated: icon-${size}x${size}.png`);
-  }
-
-  console.log('\n✅ All PWA icons generated successfully!');
-}
-
-generateIcons().catch(console.error);
+console.log('✓ SVG icons generated successfully');
+console.log('  - public/icon-192.svg');
+console.log('  - public/icon-512.svg');
+console.log('\nNote: For better compatibility, consider converting these to PNG using an image editor or online tool.');

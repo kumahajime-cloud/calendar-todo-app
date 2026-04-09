@@ -88,10 +88,16 @@ export default function LoginPage() {
             </button>
           </div>
 
-          <div className="text-center">
+          <div className="text-center space-y-2">
+            <a
+              href="/forgot-password"
+              className="block text-sm text-gray-600 hover:text-gray-900 hover:underline"
+            >
+              パスワードを忘れた方はこちら
+            </a>
             <a
               href="/signup"
-              className="text-sm text-blue-600 hover:text-blue-500"
+              className="block text-sm text-blue-600 hover:text-blue-500 hover:underline"
             >
               アカウントをお持ちでない方はこちら
             </a>

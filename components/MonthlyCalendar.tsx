@@ -1,19 +1,16 @@
 'use client'
 
 import { Database } from '@/lib/types/database.types'
-import { getHoliday } from '@/lib/utils/holidays'
 
 type CalendarEvent = Database['public']['Tables']['calendar_events']['Row']
 type Color = Database['public']['Tables']['colors']['Row']
 type Todo = Database['public']['Tables']['todos']['Row']
-type Category = Database['public']['Tables']['categories']['Row']
 
 interface MonthlyCalendarProps {
   currentDate: Date
   events: CalendarEvent[]
   todos: Todo[]
   colors: Color[]
-  categories: Category[]
   onEventClick: (event: CalendarEvent) => void
   onDateClick: (date: Date) => void
 }
@@ -23,7 +20,6 @@ export default function MonthlyCalendar({
   events,
   todos,
   colors,
-  categories,
   onEventClick,
   onDateClick,
 }: MonthlyCalendarProps) {
@@ -77,13 +73,6 @@ export default function MonthlyCalendar({
     return colors.find((c) => c.id === colorId)
   }
 
-  const getCategoryColor = (categoryId: string | null) => {
-    if (!categoryId) return null
-    const category = categories.find((c) => c.id === categoryId)
-    if (!category || !category.color_id) return null
-    return getColorById(category.color_id)
-  }
-
   const isToday = (date: Date) => {
     const today = new Date()
     return (
@@ -93,74 +82,14 @@ export default function MonthlyCalendar({
     )
   }
 
-  // Get multi-day events (events that span multiple days)
-  const getMultiDayEvents = () => {
-    return events.filter((event) => {
-      const start = new Date(event.start_date)
-      const end = new Date(event.end_date)
-
-      // Check if event spans multiple days
-      const startDay = new Date(start.getFullYear(), start.getMonth(), start.getDate())
-      const endDay = new Date(end.getFullYear(), end.getMonth(), end.getDate())
-
-      return endDay > startDay
-    })
-  }
-
-  const multiDayEvents = getMultiDayEvents()
-
   return (
-    <div className="bg-white rounded-lg shadow overflow-hidden">
-      {/* Multi-day events section */}
-      {multiDayEvents.length > 0 && (
-        <div className="border-b border-gray-200 bg-gradient-to-r from-blue-50 to-indigo-50 p-3 sm:p-4">
-          <h3 className="text-sm sm:text-base font-bold text-gray-800 mb-2 flex items-center gap-2">
-            <svg className="w-4 h-4 sm:w-5 sm:h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-            </svg>
-            複数日にわたる予定
-          </h3>
-          <div className="space-y-2">
-            {multiDayEvents.map((event) => {
-              const color = getColorById(event.color_id)
-              const start = new Date(event.start_date)
-              const end = new Date(event.end_date)
-
-              return (
-                <div
-                  key={event.id}
-                  onClick={() => onEventClick(event)}
-                  className="flex items-center gap-2 sm:gap-3 p-2.5 sm:p-3 rounded-lg bg-white shadow-sm hover:shadow-md transition-shadow cursor-pointer active:scale-98"
-                  style={{
-                    borderLeft: `4px solid ${color?.hex_code || '#9ca3af'}`,
-                  }}
-                >
-                  <div className="flex-1 min-w-0">
-                    <div className="text-sm sm:text-base font-semibold text-gray-900 truncate">
-                      {event.title}
-                    </div>
-                    <div className="text-xs sm:text-sm text-gray-600 mt-1">
-                      {start.toLocaleDateString('ja-JP', { month: 'short', day: 'numeric' })}
-                      {' 〜 '}
-                      {end.toLocaleDateString('ja-JP', { month: 'short', day: 'numeric' })}
-                    </div>
-                  </div>
-                  <div
-                    className="w-3 h-3 sm:w-4 sm:h-4 rounded-full flex-shrink-0"
-                    style={{ backgroundColor: color?.hex_code || '#9ca3af' }}
-                  />
-                </div>
-              )
-            })}
-          </div>
-        </div>
-      )}
+    <div className="bg-white shadow overflow-hidden md:max-w-7xl md:mx-auto md:rounded-lg mb-24 md:mb-0">
       {/* Weekday headers */}
       <div className="grid grid-cols-7 bg-gray-50 border-b">
         {['日', '月', '火', '水', '木', '金', '土'].map((day, index) => (
           <div
             key={day}
-            className={`p-2 sm:p-3 text-center text-sm sm:text-base font-semibold ${
+            className={`p-3 text-center text-sm font-semibold ${
               index === 0 ? 'text-red-600' : index === 6 ? 'text-blue-600' : 'text-gray-700'
             }`}
           >
@@ -173,7 +102,7 @@ export default function MonthlyCalendar({
       <div className="grid grid-cols-7 auto-rows-fr">
         {calendarDays.map((date, index) => {
           if (!date) {
-            return <div key={`empty-${index}`} className="border border-gray-200 bg-gray-50 min-h-[80px] sm:min-h-[140px]" />
+            return <div key={`empty-${index}`} className="border border-gray-200 bg-gray-50" />
           }
 
           const dayEvents = getEventsForDate(date)
@@ -181,41 +110,33 @@ export default function MonthlyCalendar({
           const today = isToday(date)
           const dayOfWeek = date.getDay()
           const totalItems = dayEvents.length + dayTodos.length
-          const holiday = getHoliday(date)
 
           return (
             <div
               key={date.toISOString()}
-              className={`border border-gray-200 p-1 sm:p-2 min-h-[80px] sm:min-h-[140px] cursor-pointer hover:bg-gray-50 transition-colors overflow-hidden ${
-                today ? 'bg-blue-50' : holiday ? 'bg-red-50' : ''
+              className={`border border-gray-200 p-1 md:p-2 min-h-[90px] md:min-h-[120px] cursor-pointer hover:bg-gray-50 transition-colors ${
+                today ? 'bg-blue-50' : ''
               }`}
               onClick={() => onDateClick(date)}
             >
-              <div className="flex flex-col gap-0.5 mb-1">
-                <div
-                  className={`text-sm sm:text-base font-semibold ${
-                    today
-                      ? 'text-blue-600 font-bold'
-                      : holiday || dayOfWeek === 0
-                      ? 'text-red-600'
-                      : dayOfWeek === 6
-                      ? 'text-blue-600'
-                      : 'text-gray-700'
-                  }`}
-                >
-                  {date.getDate()}
-                </div>
-                {holiday && (
-                  <div className="text-[9px] sm:text-[10px] text-red-600 font-bold truncate leading-tight" title={holiday.name}>
-                    {holiday.name}
-                  </div>
-                )}
+              <div
+                className={`text-xs md:text-sm font-medium mb-1 md:mb-2 ${
+                  today
+                    ? 'text-[#1e3a8a] font-bold'
+                    : dayOfWeek === 0
+                    ? 'text-red-600'
+                    : dayOfWeek === 6
+                    ? 'text-[#1e3a8a]'
+                    : 'text-gray-700'
+                }`}
+              >
+                {date.getDate()}
               </div>
 
               {/* Events and Todos for this day */}
-              <div className="space-y-0.5 sm:space-y-1">
-                {/* Events - Show up to 5 events on mobile, 4 on desktop */}
-                {dayEvents.slice(0, 5).map((event) => {
+              <div className="space-y-0.5 md:space-y-1">
+                {/* Events */}
+                {dayEvents.slice(0, 1).map((event) => {
                   const color = getColorById(event.color_id)
                   return (
                     <div
@@ -224,42 +145,43 @@ export default function MonthlyCalendar({
                         e.stopPropagation()
                         onEventClick(event)
                       }}
-                      className="text-[10px] sm:text-[11px] px-1.5 py-1 rounded-sm truncate cursor-pointer hover:opacity-90 transition-opacity font-medium shadow-sm"
+                      className="text-[10px] md:text-xs p-0.5 md:p-1 rounded truncate cursor-pointer hover:opacity-80"
                       style={{
-                        backgroundColor: color?.hex_code || '#94a3b8',
-                        color: '#ffffff',
+                        backgroundColor: color?.hex_code + '30' || '#e5e7eb',
+                        borderLeft: `2px solid ${color?.hex_code || '#9ca3af'}`,
                       }}
-                      title={`${new Date(event.start_date).toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' })} ${event.title}`}
+                      title={event.title}
                     >
+                      <span className="hidden md:inline">
+                        {new Date(event.start_date).toLocaleTimeString('ja-JP', {
+                          hour: '2-digit',
+                          minute: '2-digit',
+                        })}{' '}
+                      </span>
                       {event.title}
                     </div>
                   )
                 })}
 
-                {/* Todos - Show up to 2 todos */}
-                {dayTodos.slice(0, 2).map((todo) => {
-                  const categoryColor = getCategoryColor(todo.category_id)
+                {/* Todos */}
+                {dayTodos.slice(0, Math.max(0, 2 - dayEvents.length)).map((todo) => {
                   return (
                     <div
                       key={`todo-${todo.id}`}
-                      className="text-[10px] sm:text-[11px] px-1.5 py-1 rounded-sm truncate font-medium shadow-sm"
+                      className="text-[10px] md:text-xs p-0.5 md:p-1 rounded truncate bg-orange-50 border-l-2 border-orange-500"
                       style={{
-                        backgroundColor: categoryColor?.hex_code || '#fb923c',
-                        color: '#ffffff',
-                        opacity: todo.is_completed ? 0.6 : 1,
+                        borderLeft: '2px solid #f97316',
                       }}
                       title={`Todo: ${todo.title}`}
                     >
-                      <span className="mr-0.5">✓</span>
                       {todo.title}
                     </div>
                   )
                 })}
 
-                {/* Show remaining count if there are more items */}
-                {totalItems > 7 && (
-                  <div className="text-[10px] sm:text-[11px] text-gray-600 font-semibold pl-1">
-                    +{totalItems - 7}
+                {totalItems > 2 && (
+                  <div className="text-[10px] md:text-xs text-gray-500 pl-0.5 md:pl-1">
+                    +{totalItems - 2}
                   </div>
                 )}
               </div>

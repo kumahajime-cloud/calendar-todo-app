@@ -50,7 +50,7 @@ export default function AdminUsersClient({ user }: AdminUsersClientProps) {
       colorsResult.data?.forEach((c) => { if (c.user_id) userIds.add(c.user_id) })
       categoriesResult.data?.forEach((c) => { if (c.user_id) userIds.add(c.user_id) })
 
-      // Try to fetch all users from admin API (uses Supabase service role)
+      // Try to fetch all users from admin API
       let emailMap: Record<string, string> = {}
       try {
         const res = await fetch('/api/admin/users')
@@ -104,26 +104,26 @@ export default function AdminUsersClient({ user }: AdminUsersClientProps) {
       {/* Header */}
       <header className="bg-white shadow">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
-          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 sm:gap-4">
-            <div className="flex items-center gap-2 sm:gap-4">
-              <h1 className="text-lg sm:text-2xl font-bold text-gray-900">
+          <div className="flex justify-between items-center">
+            <div className="flex items-center gap-4">
+              <h1 className="text-2xl font-bold text-gray-900">
                 管理者 - ユーザー管理
               </h1>
               <span className="px-2 py-1 text-xs font-semibold text-white bg-purple-600 rounded">
                 管理者
               </span>
             </div>
-            <div className="flex items-center gap-2 sm:gap-4 flex-wrap">
+            <div className="flex items-center gap-4">
               <button
                 onClick={() => router.push('/dashboard')}
-                className="px-3 py-1.5 sm:px-4 sm:py-2 text-xs sm:text-sm font-medium text-gray-700 bg-gray-100 rounded hover:bg-gray-200"
+                className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 rounded hover:bg-gray-200"
               >
                 ダッシュボードに戻る
               </button>
-              <span className="text-xs sm:text-sm text-gray-600 hidden sm:inline">{user.email}</span>
+              <span className="text-sm text-gray-600">{user.email}</span>
               <button
                 onClick={handleLogout}
-                className="px-3 py-1.5 sm:px-4 sm:py-2 text-xs sm:text-sm font-medium text-white bg-red-600 rounded-md hover:bg-red-700"
+                className="px-4 py-2 text-sm font-medium text-white bg-red-600 rounded-md hover:bg-red-700"
               >
                 ログアウト
               </button>

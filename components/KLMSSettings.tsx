@@ -17,12 +17,11 @@ export function KLMSSettings() {
     setMessage(null)
 
     try {
-      const response = await fetch('/api/klms/sync-calendar', {
+      const response = await fetch('/api/klms/sync', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        credentials: 'include',
         body: JSON.stringify({ calendarUrl }),
       })
 
@@ -34,7 +33,7 @@ export function KLMSSettings() {
 
       setMessage({
         type: 'success',
-        text: `同期完了！ 追加: ${data.results.added}件、スキップ: ${data.results.skipped}件`
+        text: `同期完了！ 追加: ${data.results.added}件、スキップ: ${data.results.skipped}件（全${data.results.total}件）`
       })
     } catch (error: any) {
       setMessage({
@@ -70,18 +69,18 @@ export function KLMSSettings() {
           <ol className="text-sm text-blue-800 space-y-1 list-decimal list-inside">
             <li>KLMSにログイン</li>
             <li>右上のアカウントメニュー → 「設定」</li>
-            <li>左メニューの「その他のサービス」または「カレンダー」</li>
-            <li>「カレンダーフィード」のURLをコピー</li>
-            <li>上記の入力欄に貼り付け</li>
+            <li>左メニューの「カレンダー」をクリック</li>
+            <li>「カレンダーフィード」セクションで「カレンダーのエクスポート」をクリック</li>
+            <li>表示されたURLをコピーして上記の入力欄に貼り付け</li>
           </ol>
         </div>
 
         <button
           onClick={handleSync}
           disabled={loading}
-          className="w-full px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed"
+          className="w-full px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors"
         >
-          {loading ? '同期中...' : 'KLMSから課題を同期'}
+          {loading ? '同期中...' : 'KLMSから課題・イベントを同期'}
         </button>
 
         {message && (
@@ -105,6 +104,7 @@ export function KLMSSettings() {
             <li>課題だけでなく、KLMSのカレンダーイベントも取得されます</li>
             <li>重複した課題は自動的にスキップされます</li>
             <li>定期的に同期ボタンを押して最新の課題を取得してください</li>
+            <li>同期されたイベントはカレンダータブで確認できます</li>
           </ul>
         </div>
       </div>

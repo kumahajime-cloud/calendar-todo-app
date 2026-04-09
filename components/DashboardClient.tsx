@@ -1,215 +1,193 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { User } from '@supabase/supabase-js'
-import { createClient } from '@/lib/supabase/client'
-import { useRouter } from 'next/navigation'
 import CalendarView from './CalendarView'
 import TodoList from './TodoList'
-import NotificationSettings from './NotificationSettings'
-import { KLMSSettings } from './KLMSSettings'
-import { useEventNotifications } from '@/lib/hooks/useEventNotifications'
-import { Database } from '@/lib/types/database.types'
-
-type CalendarEvent = Database['public']['Tables']['calendar_events']['Row']
-type Todo = Database['public']['Tables']['todos']['Row']
+import KLMSView from './KLMSView'
+import UniversityCalendarView from './UniversityCalendarView'
+import SettingsView from './SettingsView'
+import FeedbackModal from './FeedbackModal'
 
 interface DashboardClientProps {
   user: User
 }
 
-const ADMIN_EMAIL = 'hajimeazb@gmail.com'
-
 export default function DashboardClient({ user }: DashboardClientProps) {
-  const [view, setView] = useState<'calendar' | 'todo' | 'klms'>('calendar')
-  const [isNotificationSettingsOpen, setIsNotificationSettingsOpen] = useState(false)
-  const [events, setEvents] = useState<CalendarEvent[]>([])
-  const [todos, setTodos] = useState<Todo[]>([])
-  const [notificationsEnabled, setNotificationsEnabled] = useState(false)
-  const [resetCalendarToMonth, setResetCalendarToMonth] = useState(false)
-  const router = useRouter()
-  const supabase = createClient()
-  const isAdmin = user.email === ADMIN_EMAIL
+  const [view, setView] = useState<'calendar' | 'todo' | 'klms' | 'university' | 'settings'>('calendar')
+  const [isFeedbackModalOpen, setIsFeedbackModalOpen] = useState(false)
 
-  useEffect(() => {
-    // Load notification setting
-    const saved = localStorage.getItem('notificationsEnabled')
-    setNotificationsEnabled(saved === 'true')
-
-    // Load all events and todos for notifications
-    loadEventsAndTodos()
-
-    // Reload events and todos every minute to keep data fresh
-    const interval = setInterval(() => {
-      loadEventsAndTodos()
-    }, 60000) // 60 seconds
-
-    return () => clearInterval(interval)
-  }, [])
-
-  const loadEventsAndTodos = async () => {
-    const now = new Date()
-    const futureDate = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000) // Next 7 days
-
-    console.log('[DashboardClient] Loading events and todos...', {
-      from: now.toISOString(),
-      to: futureDate.toISOString()
-    })
-
-    const [eventsResult, todosResult] = await Promise.all([
-      supabase
-        .from('calendar_events')
-        .select('*')
-        .eq('user_id', user.id)
-        .gte('start_date', now.toISOString())
-        .lte('start_date', futureDate.toISOString()),
-      supabase
-        .from('todos')
-        .select('*')
-        .eq('user_id', user.id)
-        .not('deadline', 'is', null)
-        .eq('is_completed', false)
-    ])
-
-    if (eventsResult.data) {
-      setEvents(eventsResult.data)
-      console.log('[DashboardClient] Loaded events:', eventsResult.data.length, eventsResult.data)
-    }
-    if (todosResult.data) {
-      setTodos(todosResult.data)
-      console.log('[DashboardClient] Loaded todos:', todosResult.data.length, todosResult.data)
-    }
-  }
-
-  // Use notification hook
-  useEventNotifications({
-    events,
-    todos,
-    enabled: notificationsEnabled
-  })
-
-  const handleLogout = async () => {
-    await supabase.auth.signOut()
-    // Use window.location for a clean redirect after logout
-    window.location.href = '/login'
-  }
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-gray-50 pb-20 md:pb-0">
       {/* Header */}
-      <header className="bg-white shadow sticky top-0 z-50">
-        <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 py-3">
-          <div className="flex justify-between items-center gap-2">
-            <h1 className="text-lg sm:text-2xl font-bold text-gray-900 truncate">
-              カレンダー & Todo
-            </h1>
-            <div className="flex items-center gap-2 sm:gap-4 flex-shrink-0">
-              {isAdmin && (
-                <>
-                  <span className="hidden sm:inline px-2 py-1 text-xs font-semibold text-white bg-purple-600 rounded">
-                    管理者
-                  </span>
-                  <button
-                    onClick={() => router.push('/admin/users')}
-                    className="hidden sm:inline-block px-4 py-2 text-sm font-medium text-white bg-purple-600 rounded hover:bg-purple-700"
-                  >
-                    ユーザー管理
-                  </button>
-                  <button
-                    onClick={() => router.push('/admin/users')}
-                    className="sm:hidden p-2 text-white bg-purple-600 rounded hover:bg-purple-700"
-                    aria-label="ユーザー管理"
-                  >
-                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
-                    </svg>
-                  </button>
-                </>
-              )}
+      <header className="bg-[#1e3a8a] shadow">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 md:py-6">
+          <div className="flex justify-between items-center">
+            <div className="flex items-center gap-2 md:gap-3">
+              <div className="w-8 h-8 md:w-10 md:h-10 bg-white rounded-lg flex items-center justify-center">
+                <span className="text-xl md:text-2xl">🐻</span>
+              </div>
+              <h1 className="text-lg md:text-2xl font-bold text-white">
+                ベアカレンダー
+              </h1>
               <button
-                onClick={() => setIsNotificationSettingsOpen(true)}
-                className="p-2 text-gray-600 hover:bg-gray-100 rounded-full transition-colors"
-                aria-label="通知設定"
-                title="通知設定"
+                onClick={() => setIsFeedbackModalOpen(true)}
+                className="ml-2 px-3 py-1 text-xs md:text-sm bg-white/20 hover:bg-white/30 text-white rounded-md transition-colors"
               >
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
-                </svg>
+                修正要望
               </button>
-              <span className="hidden sm:inline text-sm text-gray-600 truncate max-w-[150px]">{user.email}</span>
-              <button
-                onClick={handleLogout}
-                className="px-3 py-2 sm:px-4 text-xs sm:text-sm font-medium text-white bg-red-600 rounded-md hover:bg-red-700 whitespace-nowrap"
-              >
-                ログアウト
-              </button>
+            </div>
+            <div className="text-white text-sm md:text-lg font-semibold">
+              {new Date().toLocaleDateString('ja-JP', { year: 'numeric', month: '2-digit' }).replace('/', '.')}
             </div>
           </div>
         </div>
       </header>
 
-      {/* Navigation */}
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-6">
-        <div className="flex gap-2 border-b border-gray-200">
+      {/* Desktop Navigation */}
+      <div className="hidden md:block bg-white border-b border-gray-200">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="flex gap-1">
+            <button
+              onClick={() => setView('calendar')}
+              className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
+                view === 'calendar'
+                  ? 'border-[#1e3a8a] text-[#1e3a8a]'
+                  : 'border-transparent text-gray-600 hover:text-gray-900'
+              }`}
+            >
+              📅 カレンダー
+            </button>
+            <button
+              onClick={() => setView('todo')}
+              className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
+                view === 'todo'
+                  ? 'border-[#1e3a8a] text-[#1e3a8a]'
+                  : 'border-transparent text-gray-600 hover:text-gray-900'
+              }`}
+            >
+              ✓ ToDo
+            </button>
+            <button
+              onClick={() => setView('klms')}
+              className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
+                view === 'klms'
+                  ? 'border-[#1e3a8a] text-[#1e3a8a]'
+                  : 'border-transparent text-gray-600 hover:text-gray-900'
+              }`}
+            >
+              🔗 KLMS連携
+            </button>
+            <button
+              onClick={() => setView('university')}
+              className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
+                view === 'university'
+                  ? 'border-[#1e3a8a] text-[#1e3a8a]'
+                  : 'border-transparent text-gray-600 hover:text-gray-900'
+              }`}
+            >
+              🎓 大学暦
+            </button>
+            <button
+              onClick={() => setView('settings')}
+              className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
+                view === 'settings'
+                  ? 'border-[#1e3a8a] text-[#1e3a8a]'
+                  : 'border-transparent text-gray-600 hover:text-gray-900'
+              }`}
+            >
+              ⚙️ 設定
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* Mobile Bottom Navigation */}
+      <div className="md:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 z-50" style={{ paddingBottom: 'max(env(safe-area-inset-bottom), 8px)' }}>
+        <div className="grid grid-cols-5 h-18 pt-1">
           <button
-            onClick={() => {
-              setView('calendar')
-              // Reset calendar to month view when tab is clicked
-              setResetCalendarToMonth(prev => !prev)
-            }}
-            className={`px-6 py-3 text-sm font-medium border-b-2 transition-colors ${
-              view === 'calendar'
-                ? 'border-blue-600 text-blue-600'
-                : 'border-transparent text-gray-600 hover:text-gray-900'
-            }`}
+            onClick={() => setView('calendar')}
+            className="flex flex-col items-center justify-center text-[10px] transition-colors"
           >
-            カレンダー
+            <img
+              src={view === 'calendar' ? '/icon-calendar-active.png' : '/icon-calendar-inactive.png'}
+              alt="カレンダー"
+              className="w-6 h-6 mb-1 object-contain"
+            />
+            <span className={`font-medium ${view === 'calendar' ? 'text-[#1e3a8a]' : 'text-gray-600'}`}>
+              カレンダー
+            </span>
           </button>
           <button
             onClick={() => setView('todo')}
-            className={`px-6 py-3 text-sm font-medium border-b-2 transition-colors ${
-              view === 'todo'
-                ? 'border-blue-600 text-blue-600'
-                : 'border-transparent text-gray-600 hover:text-gray-900'
-            }`}
+            className="flex flex-col items-center justify-center text-[10px] transition-colors"
           >
-            Todoリスト
+            <img
+              src={view === 'todo' ? '/icon-todo-active.png' : '/icon-todo-inactive.png'}
+              alt="ToDo"
+              className="w-6 h-6 mb-1 object-contain"
+            />
+            <span className={`font-medium ${view === 'todo' ? 'text-[#1e3a8a]' : 'text-gray-600'}`}>
+              ToDo
+            </span>
           </button>
           <button
             onClick={() => setView('klms')}
-            className={`px-6 py-3 text-sm font-medium border-b-2 transition-colors ${
-              view === 'klms'
-                ? 'border-blue-600 text-blue-600'
-                : 'border-transparent text-gray-600 hover:text-gray-900'
-            }`}
+            className="flex flex-col items-center justify-center text-[10px] transition-colors"
           >
-            KLMS連携
+            <img
+              src={view === 'klms' ? '/icon-klms-active.png' : '/icon-klms-inactive.png'}
+              alt="KLMS"
+              className="w-6 h-6 mb-1 object-contain"
+            />
+            <span className={`font-medium ${view === 'klms' ? 'text-[#1e3a8a]' : 'text-gray-600'}`}>
+              KLMS
+            </span>
+          </button>
+          <button
+            onClick={() => setView('university')}
+            className="flex flex-col items-center justify-center text-[10px] transition-colors"
+          >
+            <img
+              src={view === 'university' ? '/icon-university-active.png' : '/icon-university-inactive.png'}
+              alt="大学暦"
+              className="w-6 h-6 mb-1 object-contain"
+            />
+            <span className={`font-medium ${view === 'university' ? 'text-[#1e3a8a]' : 'text-gray-600'}`}>
+              大学暦
+            </span>
+          </button>
+          <button
+            onClick={() => setView('settings')}
+            className="flex flex-col items-center justify-center text-[10px] transition-colors"
+          >
+            <img
+              src={view === 'settings' ? '/icon-settings-active.png' : '/icon-settings-inactive.png'}
+              alt="設定"
+              className="w-6 h-6 mb-1 object-contain"
+            />
+            <span className={`font-medium ${view === 'settings' ? 'text-[#1e3a8a]' : 'text-gray-600'}`}>
+              設定
+            </span>
           </button>
         </div>
       </div>
 
       {/* Main Content */}
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {view === 'calendar' ? (
-          <CalendarView userId={user.id} resetToMonth={resetCalendarToMonth} />
-        ) : view === 'todo' ? (
-          <TodoList userId={user.id} />
-        ) : (
-          <KLMSSettings />
-        )}
+      <main className={view === 'calendar' ? 'py-3 md:py-8' : 'max-w-7xl mx-auto px-2 sm:px-6 lg:px-8 py-3 md:py-8'}>
+        {view === 'calendar' && <CalendarView userId={user.id} />}
+        {view === 'todo' && <TodoList userId={user.id} />}
+        {view === 'klms' && <KLMSView userId={user.id} />}
+        {view === 'university' && <UniversityCalendarView />}
+        {view === 'settings' && <SettingsView user={user} />}
       </main>
 
-      {/* Notification Settings Modal */}
-      {isNotificationSettingsOpen && (
-        <NotificationSettings
-          onClose={() => {
-            setIsNotificationSettingsOpen(false)
-            // Reload notification setting
-            const saved = localStorage.getItem('notificationsEnabled')
-            setNotificationsEnabled(saved === 'true')
-          }}
-        />
-      )}
+      {/* Feedback Modal */}
+      <FeedbackModal
+        isOpen={isFeedbackModalOpen}
+        onClose={() => setIsFeedbackModalOpen(false)}
+      />
     </div>
   )
 }

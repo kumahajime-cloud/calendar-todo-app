@@ -6,38 +6,25 @@ import MonthlyCalendar from './MonthlyCalendar'
 import DailyCalendar from './DailyCalendar'
 import EventModal from './EventModal'
 import ColorManager from './ColorManager'
-import ExportImportModal from './ExportImportModal'
 import { Database } from '@/lib/types/database.types'
 
 type CalendarEvent = Database['public']['Tables']['calendar_events']['Row']
 type Color = Database['public']['Tables']['colors']['Row']
 type Todo = Database['public']['Tables']['todos']['Row']
-type Category = Database['public']['Tables']['categories']['Row']
 
 interface CalendarViewProps {
   userId: string
-  resetToMonth?: boolean
 }
 
-export default function CalendarView({ userId, resetToMonth }: CalendarViewProps) {
+export default function CalendarView({ userId }: CalendarViewProps) {
   const [viewMode, setViewMode] = useState<'month' | 'day'>('month')
-
-  // Reset to month view when resetToMonth prop changes
-  useEffect(() => {
-    if (resetToMonth) {
-      setViewMode('month')
-    }
-  }, [resetToMonth])
   const [currentDate, setCurrentDate] = useState(new Date())
   const [events, setEvents] = useState<CalendarEvent[]>([])
   const [todos, setTodos] = useState<Todo[]>([])
   const [colors, setColors] = useState<Color[]>([])
-  const [categories, setCategories] = useState<Category[]>([])
   const [filteredColorIds, setFilteredColorIds] = useState<Set<string>>(new Set())
-  const [searchQuery, setSearchQuery] = useState('')
   const [isEventModalOpen, setIsEventModalOpen] = useState(false)
   const [isColorManagerOpen, setIsColorManagerOpen] = useState(false)
-  const [isExportImportModalOpen, setIsExportImportModalOpen] = useState(false)
   const [selectedEvent, setSelectedEvent] = useState<CalendarEvent | null>(null)
   const [selectedDate, setSelectedDate] = useState<Date | null>(null)
   const supabase = createClient()
@@ -46,7 +33,6 @@ export default function CalendarView({ userId, resetToMonth }: CalendarViewProps
     loadEvents()
     loadTodos()
     loadColors()
-    loadCategories()
   }, [currentDate, viewMode, userId])
 
   const loadEvents = async () => {
@@ -89,30 +75,14 @@ export default function CalendarView({ userId, resetToMonth }: CalendarViewProps
   }
 
   const loadColors = async () => {
-    console.log('[Calendar] Loading colors for user:', userId)
     const { data, error } = await supabase
       .from('colors')
       .select('*')
       .eq('user_id', userId)
       .order('created_at', { ascending: true })
 
-    if (error) {
-      console.error('[Calendar] Error loading colors:', error)
-    } else {
-      console.log('[Calendar] Loaded colors:', data?.length, 'colors')
-      setColors(data)
-    }
-  }
-
-  const loadCategories = async () => {
-    const { data, error } = await supabase
-      .from('categories')
-      .select('*')
-      .eq('user_id', userId)
-      .order('created_at', { ascending: true })
-
     if (!error && data) {
-      setCategories(data)
+      setColors(data)
     }
   }
 
@@ -127,44 +97,12 @@ export default function CalendarView({ userId, resetToMonth }: CalendarViewProps
   }
 
   const getFilteredEvents = () => {
-    let filtered = events
-
-    // For month view, filter by is_visible
-    // For day view, show all events regardless of is_visible
-    if (viewMode === 'month') {
-      filtered = filtered.filter(e => e.is_visible)
+    if (filteredColorIds.size === 0) {
+      return events.filter(e => e.is_visible)
     }
-
-    // Apply color filter if any colors are selected
-    if (filteredColorIds.size > 0) {
-      filtered = filtered.filter(e => e.color_id && filteredColorIds.has(e.color_id))
-    }
-
-    // Apply search filter
-    if (searchQuery.trim()) {
-      const query = searchQuery.toLowerCase()
-      filtered = filtered.filter(e =>
-        e.title.toLowerCase().includes(query) ||
-        (e.description && e.description.toLowerCase().includes(query))
-      )
-    }
-
-    return filtered
-  }
-
-  const getFilteredTodos = () => {
-    let filtered = todos
-
-    // Apply search filter
-    if (searchQuery.trim()) {
-      const query = searchQuery.toLowerCase()
-      filtered = filtered.filter(t =>
-        t.title.toLowerCase().includes(query) ||
-        (t.description && t.description.toLowerCase().includes(query))
-      )
-    }
-
-    return filtered
+    return events.filter(
+      e => e.is_visible && e.color_id && filteredColorIds.has(e.color_id)
+    )
   }
 
   const handleEventClick = (event: CalendarEvent) => {
@@ -173,16 +111,8 @@ export default function CalendarView({ userId, resetToMonth }: CalendarViewProps
   }
 
   const handleDateClick = (date: Date) => {
-    // Open event modal for the clicked date
     setCurrentDate(date)
     setSelectedDate(date)
-    setSelectedEvent(null)
-    setIsEventModalOpen(true)
-  }
-
-  const handleAddEvent = () => {
-    // Open event modal for adding new event
-    setSelectedDate(currentDate)
     setSelectedEvent(null)
     setIsEventModalOpen(true)
   }
@@ -199,83 +129,6 @@ export default function CalendarView({ userId, resetToMonth }: CalendarViewProps
     await loadColors()
     await loadEvents()
     await loadTodos()
-  }
-
-  const handleImport = async (data: {
-    events?: Partial<CalendarEvent>[]
-    todos?: Partial<Todo>[]
-    colors?: Color[]
-    categories?: Category[]
-  }) => {
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) return
-
-    try {
-      // Import colors
-      if (data.colors && data.colors.length > 0) {
-        const colorsToInsert = data.colors.map((color) => ({
-          name: color.name,
-          hex_code: color.hex_code,
-          user_id: user.id,
-        }))
-
-        await supabase.from('colors').insert(colorsToInsert)
-      }
-
-      // Import categories
-      if (data.categories && data.categories.length > 0) {
-        const categoriesToInsert = data.categories.map((category) => ({
-          name: category.name,
-          color_id: category.color_id,
-          user_id: user.id,
-        }))
-
-        await supabase.from('categories').insert(categoriesToInsert)
-      }
-
-      // Import events
-      if (data.events && data.events.length > 0) {
-        const eventsToInsert = data.events.map((event) => ({
-          title: event.title!,
-          description: event.description,
-          start_date: event.start_date!,
-          end_date: event.end_date!,
-          color_id: event.color_id,
-          is_visible: event.is_visible ?? true,
-          is_recurring: (event as any).is_recurring ?? false,
-          recurrence_type: (event as any).recurrence_type,
-          recurrence_interval: (event as any).recurrence_interval,
-          recurrence_end_date: (event as any).recurrence_end_date,
-          user_id: user.id,
-        }))
-
-        await supabase.from('calendar_events').insert(eventsToInsert)
-      }
-
-      // Import todos
-      if (data.todos && data.todos.length > 0) {
-        const todosToInsert = data.todos.map((todo) => ({
-          title: todo.title!,
-          description: todo.description,
-          priority: todo.priority ?? 'medium',
-          deadline: todo.deadline,
-          is_completed: todo.is_completed ?? false,
-          category_id: todo.category_id,
-          user_id: user.id,
-        }))
-
-        await supabase.from('todos').insert(todosToInsert)
-      }
-
-      // Reload all data
-      await loadEvents()
-      await loadTodos()
-      await loadColors()
-      await loadCategories()
-    } catch (error) {
-      console.error('Import error:', error)
-      throw error
-    }
   }
 
   const goToPreviousPeriod = () => {
@@ -299,120 +152,54 @@ export default function CalendarView({ userId, resetToMonth }: CalendarViewProps
   }
 
   const filteredEvents = getFilteredEvents()
-  const filteredTodos = getFilteredTodos()
 
   return (
-    <div className="space-y-6">
-      {/* Search Bar */}
-      <div className="bg-white rounded-lg shadow p-4">
-        <div className="relative">
-          <input
-            type="text"
-            placeholder="予定やTodoを検索..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full px-4 py-2 pl-10 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-          />
-          <svg
-            className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400"
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
-            />
-          </svg>
-          {searchQuery && (
-            <button
-              onClick={() => setSearchQuery('')}
-              className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
-            >
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-              </svg>
-            </button>
-          )}
-        </div>
-      </div>
-
+    <div className="space-y-2 md:space-y-6">
       {/* Controls */}
-      <div className="bg-white rounded-lg shadow p-4">
-        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-          <div className="flex items-center gap-2">
+      <div className="bg-white shadow p-2 md:p-4 mx-2 md:mx-auto md:max-w-7xl md:rounded-lg">
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 md:gap-4">
+          <div className="flex items-center gap-1 md:gap-2">
             <button
               onClick={goToPreviousPeriod}
-              className="p-2 rounded hover:bg-gray-100"
+              className="p-2 rounded hover:bg-gray-100 text-base md:text-lg"
             >
               ←
             </button>
             <button
               onClick={goToToday}
-              className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 rounded hover:bg-gray-200"
+              className="px-3 md:px-4 py-2 text-sm md:text-base font-medium text-gray-700 bg-gray-100 rounded hover:bg-gray-200"
             >
               今日
             </button>
             <button
               onClick={goToNextPeriod}
-              className="p-2 rounded hover:bg-gray-100"
+              className="p-2 rounded hover:bg-gray-100 text-base md:text-lg"
             >
               →
             </button>
-            <h2 className="text-xl font-bold ml-4">
+            <h2 className="text-sm md:text-xl font-bold ml-2 md:ml-4">
               {viewMode === 'month'
-                ? `${currentDate.getFullYear()}年 ${currentDate.getMonth() + 1}月`
+                ? `${currentDate.getFullYear()}年${String(currentDate.getMonth() + 1).padStart(2, '0')}月`
                 : currentDate.toLocaleDateString('ja-JP', { year: 'numeric', month: 'long', day: 'numeric' })}
             </h2>
           </div>
 
-          <div className="flex items-center gap-2">
-            <div className="flex gap-1 bg-gray-100 rounded p-1">
-              <button
-                onClick={() => setViewMode('month')}
-                className={`px-4 py-2 text-sm font-medium rounded transition-colors ${
-                  viewMode === 'month'
-                    ? 'bg-white text-blue-600 shadow'
-                    : 'text-gray-600 hover:text-gray-900'
-                }`}
-              >
-                月
-              </button>
-              <button
-                onClick={() => setViewMode('day')}
-                className={`px-4 py-2 text-sm font-medium rounded transition-colors ${
-                  viewMode === 'day'
-                    ? 'bg-white text-blue-600 shadow'
-                    : 'text-gray-600 hover:text-gray-900'
-                }`}
-              >
-                日
-              </button>
-            </div>
-
-            <button
-              onClick={() => setIsExportImportModalOpen(true)}
-              className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 rounded hover:bg-gray-200"
-              title="エクスポート/インポート"
-            >
-              <svg className="w-5 h-5 inline-block mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
-              </svg>
-              <span className="hidden sm:inline">データ</span>
-            </button>
-
+          <div className="flex items-center gap-1 md:gap-2">
             <button
               onClick={() => setIsColorManagerOpen(true)}
-              className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 rounded hover:bg-gray-200"
+              className="hidden sm:block px-2 md:px-4 py-1 md:py-2 text-xs md:text-sm font-medium text-gray-700 bg-gray-100 rounded hover:bg-gray-200"
             >
               カラー管理
             </button>
 
+            {/* Desktop only: 予定追加 button */}
             <button
-              onClick={handleAddEvent}
-              className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded hover:bg-blue-700"
+              onClick={() => {
+                setSelectedDate(new Date())
+                setSelectedEvent(null)
+                setIsEventModalOpen(true)
+              }}
+              className="hidden md:block px-3 md:px-4 py-2 text-sm md:text-base font-medium text-white bg-[#1e3a8a] rounded hover:bg-[#1e40af]"
             >
               予定追加
             </button>
@@ -420,15 +207,24 @@ export default function CalendarView({ userId, resetToMonth }: CalendarViewProps
         </div>
 
         {/* Color Filters */}
-        {colors.length > 0 && (
-          <div className="mt-4 pt-4 border-t border-gray-200">
-            <h3 className="text-sm font-medium text-gray-700 mb-2">表示フィルター:</h3>
-            <div className="flex flex-wrap gap-2">
+        <div className="mt-2 md:mt-4 pt-2 md:pt-4 border-t border-gray-200">
+          <div className="flex items-center justify-between mb-1 md:mb-2">
+            <h3 className="text-xs md:text-sm font-medium text-gray-700">表示フィルター:</h3>
+            <button
+              onClick={() => setIsColorManagerOpen(true)}
+              className="w-6 h-6 flex items-center justify-center bg-[#1e3a8a] text-white rounded-full text-sm hover:bg-[#1e40af] transition-colors"
+              aria-label="カラー追加"
+            >
+              +
+            </button>
+          </div>
+          {colors.length > 0 ? (
+            <div className="flex flex-wrap gap-1 md:gap-2">
               {colors.map((color) => (
                 <button
                   key={color.id}
                   onClick={() => toggleColorFilter(color.id)}
-                  className={`px-3 py-1 text-sm rounded-full border-2 transition-all ${
+                  className={`px-2 md:px-3 py-0.5 md:py-1 text-xs md:text-sm rounded-full border-2 transition-all ${
                     filteredColorIds.size === 0 || filteredColorIds.has(color.id)
                       ? 'opacity-100'
                       : 'opacity-30'
@@ -445,8 +241,10 @@ export default function CalendarView({ userId, resetToMonth }: CalendarViewProps
                 </button>
               ))}
             </div>
-          </div>
-        )}
+          ) : (
+            <p className="text-xs text-gray-500">+ボタンからカラーを追加して予定を分類しましょう</p>
+          )}
+        </div>
       </div>
 
       {/* Calendar Display */}
@@ -454,9 +252,8 @@ export default function CalendarView({ userId, resetToMonth }: CalendarViewProps
         <MonthlyCalendar
           currentDate={currentDate}
           events={filteredEvents}
-          todos={filteredTodos}
+          todos={todos}
           colors={colors}
-          categories={categories}
           onEventClick={handleEventClick}
           onDateClick={handleDateClick}
         />
@@ -464,9 +261,8 @@ export default function CalendarView({ userId, resetToMonth }: CalendarViewProps
         <DailyCalendar
           currentDate={currentDate}
           events={filteredEvents}
-          todos={filteredTodos}
+          todos={todos}
           colors={colors}
-          categories={categories}
           onEventClick={handleEventClick}
         />
       )}
@@ -495,17 +291,45 @@ export default function CalendarView({ userId, resetToMonth }: CalendarViewProps
         />
       )}
 
-      {/* Export/Import Modal */}
-      {isExportImportModalOpen && (
-        <ExportImportModal
-          events={events}
-          todos={todos}
-          colors={colors}
-          categories={categories}
-          onClose={() => setIsExportImportModalOpen(false)}
-          onImport={handleImport}
-        />
-      )}
+      {/* Mobile Floating Controls */}
+      <div className="md:hidden fixed bottom-24 right-6 flex items-center gap-3 z-40">
+        {/* View Mode Toggle */}
+        <div className="flex gap-1 bg-white rounded-full shadow-lg p-1">
+          <button
+            onClick={() => setViewMode('month')}
+            className={`px-4 py-2 text-sm font-medium rounded-full transition-colors ${
+              viewMode === 'month'
+                ? 'bg-[#1e3a8a] text-white'
+                : 'text-gray-600 hover:text-gray-900'
+            }`}
+          >
+            月
+          </button>
+          <button
+            onClick={() => setViewMode('day')}
+            className={`px-4 py-2 text-sm font-medium rounded-full transition-colors ${
+              viewMode === 'day'
+                ? 'bg-[#1e3a8a] text-white'
+                : 'text-gray-600 hover:text-gray-900'
+            }`}
+          >
+            日
+          </button>
+        </div>
+
+        {/* Add Event Button */}
+        <button
+          onClick={() => {
+            setSelectedDate(viewMode === 'day' ? currentDate : new Date())
+            setSelectedEvent(null)
+            setIsEventModalOpen(true)
+          }}
+          className="w-14 h-14 bg-[#1e3a8a] text-white rounded-full shadow-lg flex items-center justify-center text-3xl hover:bg-[#1e40af] active:scale-95 transition-all"
+          aria-label="予定を追加"
+        >
+          +
+        </button>
+      </div>
     </div>
   )
 }

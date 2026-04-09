@@ -1,210 +1,281 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { useNotifications } from '@/lib/hooks/useNotifications'
 
-interface NotificationSettingsProps {
-  onClose: () => void
-}
-
-export default function NotificationSettings({ onClose }: NotificationSettingsProps) {
-  const { isSupported, permission, requestPermission, showNotification } = useNotifications()
-  const [notificationsEnabled, setNotificationsEnabled] = useState(false)
-  const [testResult, setTestResult] = useState<string | null>(null)
+export default function NotificationSettings() {
+  const [permission, setPermission] = useState<NotificationPermission>('default')
+  const [isSubscribed, setIsSubscribed] = useState(false)
+  const [notificationTime, setNotificationTime] = useState('30') // minutes before event
+  const [loading, setLoading] = useState(false)
+  const [message, setMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null)
 
   useEffect(() => {
-    // Load notification setting from localStorage
-    const saved = localStorage.getItem('notificationsEnabled')
-    setNotificationsEnabled(saved === 'true')
+    // Check current permission status
+    if ('Notification' in window) {
+      setPermission(Notification.permission)
+    }
+
+    // Check if service worker is registered and push subscription exists
+    checkSubscriptionStatus()
   }, [])
 
-  const handleToggleNotifications = async () => {
-    if (!notificationsEnabled) {
-      // Enable notifications - request permission
-      const granted = await requestPermission()
-      if (granted) {
-        setNotificationsEnabled(true)
-        localStorage.setItem('notificationsEnabled', 'true')
+  const checkSubscriptionStatus = async () => {
+    if ('serviceWorker' in navigator && 'PushManager' in window) {
+      try {
+        const registration = await navigator.serviceWorker.ready
+        const subscription = await registration.pushManager.getSubscription()
+        setIsSubscribed(!!subscription)
+      } catch (error) {
+        console.error('Error checking subscription:', error)
       }
-    } else {
-      // Disable notifications
-      setNotificationsEnabled(false)
-      localStorage.setItem('notificationsEnabled', 'false')
     }
   }
 
-  const handleTestNotification = () => {
-    if (permission !== 'granted') {
-      setTestResult('❌ 通知の許可が必要です')
+  const requestPermission = async () => {
+    if (!('Notification' in window)) {
+      setMessage({ type: 'error', text: 'このブラウザは通知をサポートしていません' })
       return
     }
 
     try {
-      showNotification('🔔 テスト通知', {
-        body: '通知機能は正常に動作しています！',
-        tag: 'test-notification',
-      })
-      setTestResult('✅ テスト通知を送信しました')
+      const result = await Notification.requestPermission()
+      setPermission(result)
 
-      // Clear message after 3 seconds
-      setTimeout(() => setTestResult(null), 3000)
+      if (result === 'granted') {
+        setMessage({ type: 'success', text: '通知が許可されました！' })
+        await registerServiceWorker()
+      } else if (result === 'denied') {
+        setMessage({ type: 'error', text: '通知が拒否されました。ブラウザの設定から許可してください。' })
+      }
     } catch (error) {
-      setTestResult('❌ 通知の送信に失敗しました')
-      console.error('Test notification error:', error)
+      console.error('Error requesting permission:', error)
+      setMessage({ type: 'error', text: '通知の許可リクエストに失敗しました' })
     }
   }
 
-  const getPermissionStatus = () => {
-    if (!isSupported) {
-      return 'このブラウザは通知をサポートしていません'
+  const registerServiceWorker = async () => {
+    if (!('serviceWorker' in navigator)) {
+      console.log('Service Worker not supported')
+      return
     }
 
-    switch (permission) {
-      case 'granted':
-        return '通知が許可されています'
-      case 'denied':
-        return '通知がブロックされています。ブラウザの設定から許可してください'
-      default:
-        return '通知の許可が必要です'
+    try {
+      const registration = await navigator.serviceWorker.register('/sw.js')
+      console.log('Service Worker registered:', registration)
+
+      // Subscribe to push notifications
+      await subscribeToPush(registration)
+    } catch (error) {
+      console.error('Service Worker registration failed:', error)
+      setMessage({ type: 'error', text: 'Service Workerの登録に失敗しました' })
     }
   }
 
-  const getPermissionColor = () => {
-    switch (permission) {
-      case 'granted':
-        return 'text-green-600'
-      case 'denied':
-        return 'text-red-600'
-      default:
-        return 'text-gray-600'
+  const subscribeToPush = async (registration: ServiceWorkerRegistration) => {
+    setLoading(true)
+    try {
+      const subscription = await registration.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: urlBase64ToUint8Array(
+          process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY || ''
+        ),
+      })
+
+      // Send subscription to server
+      await fetch('/api/notifications/subscribe', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          subscription,
+          notificationTime: parseInt(notificationTime)
+        }),
+      })
+
+      setIsSubscribed(true)
+      setMessage({ type: 'success', text: 'プッシュ通知を有効にしました' })
+    } catch (error) {
+      console.error('Push subscription failed:', error)
+      setMessage({ type: 'error', text: 'プッシュ通知の登録に失敗しました' })
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const unsubscribeFromPush = async () => {
+    setLoading(true)
+    try {
+      const registration = await navigator.serviceWorker.ready
+      const subscription = await registration.pushManager.getSubscription()
+
+      if (subscription) {
+        await subscription.unsubscribe()
+
+        // Remove subscription from server
+        await fetch('/api/notifications/unsubscribe', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ endpoint: subscription.endpoint }),
+        })
+
+        setIsSubscribed(false)
+        setMessage({ type: 'success', text: 'プッシュ通知を無効にしました' })
+      }
+    } catch (error) {
+      console.error('Unsubscribe failed:', error)
+      setMessage({ type: 'error', text: '通知の無効化に失敗しました' })
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const sendTestNotification = async () => {
+    if (permission !== 'granted') {
+      setMessage({ type: 'error', text: '先に通知を許可してください' })
+      return
+    }
+
+    try {
+      new Notification('ベアカレンダー - テスト通知', {
+        body: 'これはテスト通知です。通知設定が正しく動作しています！',
+        icon: '/icon-192.png',
+        badge: '/icon-192.png',
+      })
+      setMessage({ type: 'success', text: 'テスト通知を送信しました' })
+    } catch (error) {
+      console.error('Test notification failed:', error)
+      setMessage({ type: 'error', text: 'テスト通知の送信に失敗しました' })
     }
   }
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-lg shadow-xl max-w-md w-full">
-        <div className="p-6">
-          <div className="flex justify-between items-center mb-6">
-            <h2 className="text-2xl font-bold text-gray-900">通知設定</h2>
-            <button
-              onClick={onClose}
-              className="text-gray-400 hover:text-gray-600"
-            >
-              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-              </svg>
-            </button>
-          </div>
+    <div className="bg-white rounded-lg shadow p-6">
+      <h2 className="text-xl font-bold mb-4">通知設定</h2>
 
-          <div className="space-y-6">
-            {/* Notification Status */}
-            <div className="bg-gray-50 p-4 rounded-lg">
-              <div className="flex items-start gap-3">
-                <svg className={`w-5 h-5 mt-0.5 ${getPermissionColor()}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
-                </svg>
-                <div className="flex-1">
-                  <p className={`text-sm font-medium ${getPermissionColor()}`}>
-                    {getPermissionStatus()}
-                  </p>
-                </div>
-              </div>
+      <div className="space-y-6">
+        {/* Permission Status */}
+        <div>
+          <h3 className="text-sm font-medium text-gray-700 mb-2">通知の許可状態</h3>
+          <div className="flex items-center gap-2">
+            <span className={`px-3 py-1 rounded-full text-sm font-medium ${
+              permission === 'granted'
+                ? 'bg-green-100 text-green-800'
+                : permission === 'denied'
+                ? 'bg-red-100 text-red-800'
+                : 'bg-gray-100 text-gray-800'
+            }`}>
+              {permission === 'granted' ? '✓ 許可済み' : permission === 'denied' ? '✗ 拒否済み' : '未設定'}
+            </span>
+          </div>
+        </div>
+
+        {/* Request Permission Button */}
+        {permission !== 'granted' && (
+          <div>
+            <button
+              onClick={requestPermission}
+              className="w-full px-4 py-2 bg-[#1e3a8a] text-white rounded-md hover:bg-[#1e40af] transition-colors"
+            >
+              通知を許可する
+            </button>
+            <p className="mt-2 text-xs text-gray-500">
+              予定の通知を受け取るには、ブラウザの通知を許可してください
+            </p>
+          </div>
+        )}
+
+        {/* Notification Time */}
+        {permission === 'granted' && (
+          <>
+            <div>
+              <label htmlFor="notification-time" className="block text-sm font-medium text-gray-700 mb-2">
+                通知タイミング
+              </label>
+              <select
+                id="notification-time"
+                value={notificationTime}
+                onChange={(e) => setNotificationTime(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#1e3a8a]"
+              >
+                <option value="5">5分前</option>
+                <option value="10">10分前</option>
+                <option value="15">15分前</option>
+                <option value="30">30分前</option>
+                <option value="60">1時間前</option>
+                <option value="1440">1日前</option>
+              </select>
             </div>
 
-            {/* Enable/Disable Toggle */}
-            <div className="flex items-center justify-between">
-              <div>
-                <h3 className="text-sm font-medium text-gray-900">通知を有効にする</h3>
-                <p className="text-sm text-gray-500 mt-1">
-                  予定とTodoのリマインダーを受け取る
-                </p>
-              </div>
+            {/* Push Notification Toggle */}
+            <div>
+              <label className="flex items-center justify-between p-4 border border-gray-300 rounded-md cursor-pointer hover:bg-gray-50">
+                <div>
+                  <div className="font-medium text-gray-900">プッシュ通知</div>
+                  <div className="text-sm text-gray-500">
+                    アプリを開いていない時でも通知を受け取る
+                  </div>
+                </div>
+                <button
+                  onClick={isSubscribed ? unsubscribeFromPush : () => registerServiceWorker()}
+                  disabled={loading}
+                  className={`px-4 py-2 rounded-md transition-colors ${
+                    isSubscribed
+                      ? 'bg-green-100 text-green-800 hover:bg-green-200'
+                      : 'bg-gray-100 text-gray-800 hover:bg-gray-200'
+                  } disabled:opacity-50`}
+                >
+                  {loading ? '処理中...' : isSubscribed ? 'ON' : 'OFF'}
+                </button>
+              </label>
+            </div>
+
+            {/* Test Notification */}
+            <div>
               <button
-                onClick={handleToggleNotifications}
-                disabled={!isSupported || permission === 'denied'}
-                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed ${
-                  notificationsEnabled ? 'bg-blue-600' : 'bg-gray-200'
-                }`}
+                onClick={sendTestNotification}
+                className="w-full px-4 py-2 border border-gray-300 text-gray-700 rounded-md hover:bg-gray-50 transition-colors"
               >
-                <span
-                  className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                    notificationsEnabled ? 'translate-x-6' : 'translate-x-1'
-                  }`}
-                />
+                テスト通知を送信
               </button>
             </div>
+          </>
+        )}
 
-            {/* Test Notification Button */}
-            <div className="border-t border-gray-200 pt-4">
-              <button
-                onClick={handleTestNotification}
-                disabled={permission !== 'granted'}
-                className="w-full px-4 py-2 text-sm font-medium text-white bg-green-600 rounded-md hover:bg-green-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors"
-              >
-                🔔 テスト通知を送信
-              </button>
-              {testResult && (
-                <p className="mt-2 text-sm text-center text-gray-700">
-                  {testResult}
-                </p>
-              )}
-            </div>
-
-            {/* Notification Details */}
-            <div className="border-t border-gray-200 pt-4">
-              <h3 className="text-sm font-medium text-gray-900 mb-3">通知タイミング</h3>
-              <div className="space-y-2 text-sm text-gray-600">
-                <div className="flex items-start gap-2">
-                  <svg className="w-4 h-4 mt-0.5 text-blue-500" fill="currentColor" viewBox="0 0 20 20">
-                    <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
-                  </svg>
-                  <span>予定の15分前</span>
-                </div>
-                <div className="flex items-start gap-2">
-                  <svg className="w-4 h-4 mt-0.5 text-blue-500" fill="currentColor" viewBox="0 0 20 20">
-                    <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
-                  </svg>
-                  <span>予定の5分前</span>
-                </div>
-                <div className="flex items-start gap-2">
-                  <svg className="w-4 h-4 mt-0.5 text-blue-500" fill="currentColor" viewBox="0 0 20 20">
-                    <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
-                  </svg>
-                  <span>予定開始時</span>
-                </div>
-                <div className="flex items-start gap-2">
-                  <svg className="w-4 h-4 mt-0.5 text-orange-500" fill="currentColor" viewBox="0 0 20 20">
-                    <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
-                  </svg>
-                  <span>Todo締切の1日前</span>
-                </div>
-                <div className="flex items-start gap-2">
-                  <svg className="w-4 h-4 mt-0.5 text-orange-500" fill="currentColor" viewBox="0 0 20 20">
-                    <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
-                  </svg>
-                  <span>Todo締切の1時間前</span>
-                </div>
-              </div>
-            </div>
-
-            {permission === 'denied' && (
-              <div className="bg-yellow-50 border border-yellow-200 text-yellow-800 px-4 py-3 rounded text-sm">
-                <p className="font-medium mb-1">通知がブロックされています</p>
-                <p>ブラウザのアドレスバー左側の鍵アイコンから、通知の許可を有効にしてください。</p>
-              </div>
-            )}
+        {/* Message Display */}
+        {message && (
+          <div
+            className={`p-3 rounded-md ${
+              message.type === 'success'
+                ? 'bg-green-50 text-green-800 border border-green-200'
+                : 'bg-red-50 text-red-800 border border-red-200'
+            }`}
+          >
+            {message.text}
           </div>
+        )}
 
-          <div className="mt-6 flex justify-end">
-            <button
-              onClick={onClose}
-              className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700"
-            >
-              閉じる
-            </button>
-          </div>
+        {/* Info Box */}
+        <div className="bg-blue-50 border border-blue-200 rounded-md p-4 text-sm text-blue-800">
+          <h3 className="font-medium mb-2">ℹ️ 通知について</h3>
+          <ul className="space-y-1 list-disc list-inside">
+            <li>予定やTodoの時間になると通知が届きます</li>
+            <li>PWAとしてホーム画面に追加すると、より確実に通知が届きます</li>
+            <li>iOSの場合、ホーム画面に追加した後に通知設定をしてください</li>
+            <li>通知は設定した時間前に送信されます</li>
+          </ul>
         </div>
       </div>
     </div>
   )
+}
+
+// Helper function to convert VAPID key
+function urlBase64ToUint8Array(base64String: string): BufferSource {
+  const padding = '='.repeat((4 - (base64String.length % 4)) % 4)
+  const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/')
+  const rawData = window.atob(base64)
+  const outputArray = new Uint8Array(rawData.length)
+  for (let i = 0; i < rawData.length; ++i) {
+    outputArray[i] = rawData.charCodeAt(i)
+  }
+  return outputArray as BufferSource
 }

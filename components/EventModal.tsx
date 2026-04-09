@@ -30,21 +30,9 @@ export default function EventModal({
   const [endTime, setEndTime] = useState('')
   const [colorId, setColorId] = useState<string>('')
   const [isVisible, setIsVisible] = useState(true)
-  const [isRecurring, setIsRecurring] = useState(false)
-  const [recurrenceType, setRecurrenceType] = useState<'daily' | 'weekly' | 'monthly' | 'yearly'>('weekly')
-  const [recurrenceInterval, setRecurrenceInterval] = useState(1)
-  const [recurrenceEndDate, setRecurrenceEndDate] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const supabase = createClient()
-
-  // Helper function to format date in local timezone
-  const formatLocalDate = (date: Date): string => {
-    const year = date.getFullYear()
-    const month = String(date.getMonth() + 1).padStart(2, '0')
-    const day = String(date.getDate()).padStart(2, '0')
-    return `${year}-${month}-${day}`
-  }
 
   useEffect(() => {
     if (event) {
@@ -52,22 +40,16 @@ export default function EventModal({
       setDescription(event.description || '')
       const start = new Date(event.start_date)
       const end = new Date(event.end_date)
-      setStartDate(formatLocalDate(start))
+      // Use local date components to avoid UTC/local timezone mismatch
+      setStartDate(`${start.getFullYear()}-${String(start.getMonth() + 1).padStart(2, '0')}-${String(start.getDate()).padStart(2, '0')}`)
       setStartTime(start.toTimeString().slice(0, 5))
-      setEndDate(formatLocalDate(end))
+      setEndDate(`${end.getFullYear()}-${String(end.getMonth() + 1).padStart(2, '0')}-${String(end.getDate()).padStart(2, '0')}`)
       setEndTime(end.toTimeString().slice(0, 5))
       setColorId(event.color_id || '')
       setIsVisible(event.is_visible)
-      setIsRecurring((event as any).is_recurring || false)
-      setRecurrenceType((event as any).recurrence_type || 'weekly')
-      setRecurrenceInterval((event as any).recurrence_interval || 1)
-      if ((event as any).recurrence_end_date) {
-        setRecurrenceEndDate(formatLocalDate(new Date((event as any).recurrence_end_date)))
-      }
     } else if (initialDate) {
-      // Format date in local timezone to avoid timezone conversion issues
-      const dateStr = formatLocalDate(initialDate)
-
+      // Use local date (JST) instead of UTC to avoid date shifting
+      const dateStr = `${initialDate.getFullYear()}-${String(initialDate.getMonth() + 1).padStart(2, '0')}-${String(initialDate.getDate()).padStart(2, '0')}`
       setStartDate(dateStr)
       setEndDate(dateStr)
       setStartTime('09:00')
@@ -89,17 +71,13 @@ export default function EventModal({
       return
     }
 
-    const eventData: any = {
+    const eventData = {
       title,
       description: description || null,
       start_date: startDateTime.toISOString(),
       end_date: endDateTime.toISOString(),
       color_id: colorId || null,
       is_visible: isVisible,
-      is_recurring: isRecurring,
-      recurrence_type: isRecurring ? recurrenceType : null,
-      recurrence_interval: isRecurring ? recurrenceInterval : null,
-      recurrence_end_date: isRecurring && recurrenceEndDate ? new Date(recurrenceEndDate).toISOString() : null,
     }
 
     if (event) {
@@ -157,22 +135,10 @@ export default function EventModal({
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
       <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
-        <div className="p-4 sm:p-6">
-          <div className="flex justify-between items-center mb-4 sm:mb-6">
-            <h2 className="text-xl sm:text-2xl font-bold text-gray-900">
-              {event ? '予定を編集' : '予定を追加'}
-            </h2>
-            <button
-              type="button"
-              onClick={onClose}
-              className="p-2 hover:bg-gray-100 rounded-full transition-colors"
-              aria-label="閉じる"
-            >
-              <svg className="w-6 h-6 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-              </svg>
-            </button>
-          </div>
+        <div className="p-6">
+          <h2 className="text-2xl font-bold text-gray-900 mb-6">
+            {event ? '予定を編集' : '予定を追加'}
+          </h2>
 
           <form onSubmit={handleSubmit} className="space-y-4">
             {error && (
@@ -228,28 +194,7 @@ export default function EventModal({
                   type="time"
                   required
                   value={startTime}
-                  onChange={(e) => {
-                    const newStartTime = e.target.value
-                    setStartTime(newStartTime)
-
-                    // Auto-set end time to 1 hour later
-                    if (newStartTime) {
-                      const [hours, minutes] = newStartTime.split(':').map(Number)
-                      const endHour = (hours + 1) % 24
-                      const endTimeStr = `${String(endHour).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`
-                      setEndTime(endTimeStr)
-
-                      // If end time goes to next day, update end date
-                      if (hours + 1 >= 24) {
-                        const currentStartDate = new Date(startDate)
-                        currentStartDate.setDate(currentStartDate.getDate() + 1)
-                        setEndDate(currentStartDate.toISOString().split('T')[0])
-                      } else if (startDate && endDate !== startDate && hours + 1 < 24) {
-                        // Reset end date to same as start date if it was different
-                        setEndDate(startDate)
-                      }
-                    }
-                  }}
+                  onChange={(e) => setStartTime(e.target.value)}
                   className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
               </div>
@@ -310,79 +255,6 @@ export default function EventModal({
               <label htmlFor="isVisible" className="ml-2 text-sm text-gray-700">
                 カレンダーに表示する
               </label>
-            </div>
-
-            {/* Recurring Event Settings */}
-            <div className="border-t border-gray-200 pt-4">
-              <div className="flex items-center mb-4">
-                <input
-                  type="checkbox"
-                  id="isRecurring"
-                  checked={isRecurring}
-                  onChange={(e) => setIsRecurring(e.target.checked)}
-                  className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
-                />
-                <label htmlFor="isRecurring" className="ml-2 text-sm font-medium text-gray-700">
-                  繰り返し予定
-                </label>
-              </div>
-
-              {isRecurring && (
-                <div className="space-y-4 ml-6">
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
-                        繰り返しタイプ
-                      </label>
-                      <select
-                        value={recurrenceType}
-                        onChange={(e) => setRecurrenceType(e.target.value as any)}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      >
-                        <option value="daily">毎日</option>
-                        <option value="weekly">毎週</option>
-                        <option value="monthly">毎月</option>
-                        <option value="yearly">毎年</option>
-                      </select>
-                    </div>
-
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
-                        間隔
-                      </label>
-                      <input
-                        type="number"
-                        min="1"
-                        max="365"
-                        value={recurrenceInterval}
-                        onChange={(e) => setRecurrenceInterval(parseInt(e.target.value) || 1)}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      />
-                    </div>
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      繰り返し終了日（オプション）
-                    </label>
-                    <input
-                      type="date"
-                      value={recurrenceEndDate}
-                      onChange={(e) => setRecurrenceEndDate(e.target.value)}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    />
-                  </div>
-
-                  <p className="text-xs text-gray-500">
-                    {recurrenceInterval > 1 ? `${recurrenceInterval}` : ''}
-                    {recurrenceType === 'daily' && (recurrenceInterval > 1 ? '日ごと' : '毎日')}
-                    {recurrenceType === 'weekly' && (recurrenceInterval > 1 ? '週間ごと' : '毎週')}
-                    {recurrenceType === 'monthly' && (recurrenceInterval > 1 ? 'ヶ月ごと' : '毎月')}
-                    {recurrenceType === 'yearly' && (recurrenceInterval > 1 ? '年ごと' : '毎年')}
-                    に繰り返します
-                  </p>
-                </div>
-              )}
             </div>
 
             <div className="flex justify-between pt-4">
