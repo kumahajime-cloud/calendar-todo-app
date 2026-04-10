@@ -46,6 +46,9 @@ export default function DailyCalendar({
     })
   }
 
+  const dayEvents = getDayEvents()
+  const dayTodos = getDayTodos()
+
   const getEventsForHour = (hour: number) => {
     return dayEvents.filter((event) => {
       const eventHour = new Date(event.start_date).getHours()
@@ -58,11 +61,8 @@ export default function DailyCalendar({
     return colors.find((c) => c.id === colorId)
   }
 
-  const dayEvents = getDayEvents()
-  const dayTodos = getDayTodos()
-
   return (
-    <div className="bg-white rounded-lg shadow overflow-hidden mb-24 md:mb-0">
+    <div className="bg-white rounded-lg shadow overflow-hidden mb-4 md:mb-0">
       <div className="p-4 border-b bg-gray-50">
         <h3 className="text-lg font-semibold text-gray-900">
           {currentDate.toLocaleDateString('ja-JP', {

@@ -83,7 +83,7 @@ export default function MonthlyCalendar({
   }
 
   return (
-    <div className="bg-white shadow overflow-hidden md:max-w-7xl md:mx-auto md:rounded-lg mb-24 md:mb-0">
+    <div className="bg-white shadow overflow-hidden md:max-w-7xl md:mx-auto md:rounded-lg mb-4 md:mb-0">
       {/* Weekday headers */}
       <div className="grid grid-cols-7 bg-gray-50 border-b">
         {['日', '月', '火', '水', '木', '金', '土'].map((day, index) => (
