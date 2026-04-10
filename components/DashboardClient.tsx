@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { User } from '@supabase/supabase-js'
 import CalendarView from './CalendarView'
 import TodoList from './TodoList'
@@ -8,18 +8,92 @@ import KLMSView from './KLMSView'
 import UniversityCalendarView from './UniversityCalendarView'
 import SettingsView from './SettingsView'
 import FeedbackModal from './FeedbackModal'
+import DeadlineCountdown from './DeadlineCountdown'
+import TimetableView from './TimetableView'
+import CreditTracker from './CreditTracker'
+
+type ViewType = 'calendar' | 'todo' | 'klms' | 'timetable' | 'university' | 'credits' | 'settings'
 
 interface DashboardClientProps {
   user: User
 }
 
 export default function DashboardClient({ user }: DashboardClientProps) {
-  const [view, setView] = useState<'calendar' | 'todo' | 'klms' | 'university' | 'settings'>('calendar')
+  const [view, setView] = useState<ViewType>('calendar')
   const [isFeedbackModalOpen, setIsFeedbackModalOpen] = useState(false)
+  const [syncToast, setSyncToast] = useState<string | null>(null)
+  const [moreMenuOpen, setMoreMenuOpen] = useState(false)
+  const moreMenuRef = useRef<HTMLDivElement>(null)
+  const hasSyncedRef = useRef(false)
 
+  // Auto-sync KLMS on mount
+  useEffect(() => {
+    if (hasSyncedRef.current) return
+    hasSyncedRef.current = true
+
+    const klmsUrl = localStorage.getItem('klms_calendar_url')
+    if (!klmsUrl) return
+
+    const lastSync = localStorage.getItem('klms_last_sync')
+    const oneHour = 60 * 60 * 1000
+    const now = Date.now()
+
+    if (lastSync && now - parseInt(lastSync, 10) < oneHour) return
+
+    // Trigger background sync
+    fetch('/api/klms/sync', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ calendarUrl: klmsUrl }),
+    })
+      .then(async (res) => {
+        if (res.ok) {
+          localStorage.setItem('klms_last_sync', String(Date.now()))
+          setSyncToast('KLMS同期が完了しました')
+        } else {
+          setSyncToast('KLMS同期に失敗しました')
+        }
+      })
+      .catch(() => {
+        setSyncToast('KLMS同期に失敗しました')
+      })
+  }, [])
+
+  // Auto-hide toast
+  useEffect(() => {
+    if (!syncToast) return
+    const timer = setTimeout(() => setSyncToast(null), 3000)
+    return () => clearTimeout(timer)
+  }, [syncToast])
+
+  // Close more menu when clicking outside
+  useEffect(() => {
+    if (!moreMenuOpen) return
+    const handleClick = (e: MouseEvent) => {
+      if (moreMenuRef.current && !moreMenuRef.current.contains(e.target as Node)) {
+        setMoreMenuOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClick)
+    return () => document.removeEventListener('mousedown', handleClick)
+  }, [moreMenuOpen])
+
+  const isMoreView = view === 'university' || view === 'credits' || view === 'settings'
+
+  const handleMoreSelect = useCallback((v: ViewType) => {
+    setView(v)
+    setMoreMenuOpen(false)
+  }, [])
 
   return (
     <div className="min-h-screen bg-gray-50 pb-20 md:pb-0">
+      {/* Sync Toast */}
+      {syncToast && (
+        <div className="fixed top-4 right-4 z-[100] bg-gray-800 text-white text-sm px-4 py-2 rounded-lg shadow-lg animate-fade-in">
+          {syncToast}
+        </div>
+      )}
+
       {/* Header */}
       <header className="bg-[#1e3a8a] shadow">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 md:py-6">
@@ -49,56 +123,27 @@ export default function DashboardClient({ user }: DashboardClientProps) {
       <div className="hidden md:block bg-white border-b border-gray-200">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex gap-1">
-            <button
-              onClick={() => setView('calendar')}
-              className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
-                view === 'calendar'
-                  ? 'border-[#1e3a8a] text-[#1e3a8a]'
-                  : 'border-transparent text-gray-600 hover:text-gray-900'
-              }`}
-            >
-              📅 カレンダー
-            </button>
-            <button
-              onClick={() => setView('todo')}
-              className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
-                view === 'todo'
-                  ? 'border-[#1e3a8a] text-[#1e3a8a]'
-                  : 'border-transparent text-gray-600 hover:text-gray-900'
-              }`}
-            >
-              ✓ ToDo
-            </button>
-            <button
-              onClick={() => setView('klms')}
-              className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
-                view === 'klms'
-                  ? 'border-[#1e3a8a] text-[#1e3a8a]'
-                  : 'border-transparent text-gray-600 hover:text-gray-900'
-              }`}
-            >
-              🔗 KLMS連携
-            </button>
-            <button
-              onClick={() => setView('university')}
-              className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
-                view === 'university'
-                  ? 'border-[#1e3a8a] text-[#1e3a8a]'
-                  : 'border-transparent text-gray-600 hover:text-gray-900'
-              }`}
-            >
-              🎓 大学暦
-            </button>
-            <button
-              onClick={() => setView('settings')}
-              className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
-                view === 'settings'
-                  ? 'border-[#1e3a8a] text-[#1e3a8a]'
-                  : 'border-transparent text-gray-600 hover:text-gray-900'
-              }`}
-            >
-              ⚙️ 設定
-            </button>
+            {([
+              { key: 'calendar', label: '📅 カレンダー' },
+              { key: 'todo', label: '✓ ToDo' },
+              { key: 'timetable', label: '📋 時間割' },
+              { key: 'klms', label: '🔗 KLMS連携' },
+              { key: 'university', label: '🎓 大学暦' },
+              { key: 'credits', label: '📊 単位' },
+              { key: 'settings', label: '⚙️ 設定' },
+            ] as { key: ViewType; label: string }[]).map((tab) => (
+              <button
+                key={tab.key}
+                onClick={() => setView(tab.key)}
+                className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
+                  view === tab.key
+                    ? 'border-[#1e3a8a] text-[#1e3a8a]'
+                    : 'border-transparent text-gray-600 hover:text-gray-900'
+                }`}
+              >
+                {tab.label}
+              </button>
+            ))}
           </div>
         </div>
       </div>
@@ -133,6 +178,15 @@ export default function DashboardClient({ user }: DashboardClientProps) {
             </span>
           </button>
           <button
+            onClick={() => setView('timetable')}
+            className="flex flex-col items-center justify-center text-[10px] transition-colors"
+          >
+            <span className="text-xl mb-1">📋</span>
+            <span className={`font-medium ${view === 'timetable' ? 'text-[#1e3a8a]' : 'text-gray-600'}`}>
+              時間割
+            </span>
+          </button>
+          <button
             onClick={() => setView('klms')}
             className="flex flex-col items-center justify-center text-[10px] transition-colors"
           >
@@ -145,41 +199,62 @@ export default function DashboardClient({ user }: DashboardClientProps) {
               KLMS
             </span>
           </button>
-          <button
-            onClick={() => setView('university')}
-            className="flex flex-col items-center justify-center text-[10px] transition-colors"
-          >
-            <img
-              src={view === 'university' ? '/icon-university-active.png' : '/icon-university-inactive.png'}
-              alt="大学暦"
-              className="w-6 h-6 mb-1 object-contain"
-            />
-            <span className={`font-medium ${view === 'university' ? 'text-[#1e3a8a]' : 'text-gray-600'}`}>
-              大学暦
-            </span>
-          </button>
-          <button
-            onClick={() => setView('settings')}
-            className="flex flex-col items-center justify-center text-[10px] transition-colors"
-          >
-            <img
-              src={view === 'settings' ? '/icon-settings-active.png' : '/icon-settings-inactive.png'}
-              alt="設定"
-              className="w-6 h-6 mb-1 object-contain"
-            />
-            <span className={`font-medium ${view === 'settings' ? 'text-[#1e3a8a]' : 'text-gray-600'}`}>
-              設定
-            </span>
-          </button>
+          {/* More menu (その他) */}
+          <div ref={moreMenuRef} className="relative flex flex-col items-center justify-center">
+            <button
+              onClick={() => setMoreMenuOpen((prev) => !prev)}
+              className="flex flex-col items-center justify-center text-[10px] transition-colors w-full"
+            >
+              <svg className="w-6 h-6 mb-1" viewBox="0 0 24 24" fill="none" stroke={isMoreView ? '#1e3a8a' : '#6b7280'} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="12" cy="5" r="1.5" />
+                <circle cx="12" cy="12" r="1.5" />
+                <circle cx="12" cy="19" r="1.5" />
+              </svg>
+              <span className={`font-medium ${isMoreView ? 'text-[#1e3a8a]' : 'text-gray-600'}`}>
+                その他
+              </span>
+            </button>
+            {moreMenuOpen && (
+              <div className="absolute bottom-full mb-2 right-0 bg-white border border-gray-200 rounded-lg shadow-lg py-1 min-w-[140px] z-[60]">
+                <button
+                  onClick={() => handleMoreSelect('university')}
+                  className={`w-full text-left px-4 py-2.5 text-sm hover:bg-gray-50 ${view === 'university' ? 'text-[#1e3a8a] font-semibold' : 'text-gray-700'}`}
+                >
+                  🎓 大学暦
+                </button>
+                <button
+                  onClick={() => handleMoreSelect('credits')}
+                  className={`w-full text-left px-4 py-2.5 text-sm hover:bg-gray-50 ${view === 'credits' ? 'text-[#1e3a8a] font-semibold' : 'text-gray-700'}`}
+                >
+                  📊 単位管理
+                </button>
+                <button
+                  onClick={() => handleMoreSelect('settings')}
+                  className={`w-full text-left px-4 py-2.5 text-sm hover:bg-gray-50 ${view === 'settings' ? 'text-[#1e3a8a] font-semibold' : 'text-gray-700'}`}
+                >
+                  ⚙️ 設定
+                </button>
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
       {/* Main Content */}
       <main className={view === 'calendar' ? 'py-3 md:py-8' : 'max-w-7xl mx-auto px-2 sm:px-6 lg:px-8 py-3 md:py-8'}>
-        {view === 'calendar' && <CalendarView userId={user.id} />}
+        {view === 'calendar' && (
+          <>
+            <div className="max-w-7xl mx-auto px-2 sm:px-6 lg:px-8 mb-3">
+              <DeadlineCountdown userId={user.id} />
+            </div>
+            <CalendarView userId={user.id} />
+          </>
+        )}
         {view === 'todo' && <TodoList userId={user.id} />}
         {view === 'klms' && <KLMSView userId={user.id} />}
+        {view === 'timetable' && <TimetableView userId={user.id} />}
         {view === 'university' && <UniversityCalendarView />}
+        {view === 'credits' && <CreditTracker userId={user.id} />}
         {view === 'settings' && <SettingsView user={user} />}
       </main>
 

@@ -9,7 +9,7 @@ interface KLMSViewProps {
 export default function KLMSView({ userId }: KLMSViewProps) {
   return (
     <div className="max-w-4xl mx-auto">
-      <KLMSSettings />
+      <KLMSSettings userId={userId} />
     </div>
   )
 }

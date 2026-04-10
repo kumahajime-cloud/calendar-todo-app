@@ -33,14 +33,18 @@ export async function POST(request: NextRequest) {
     const comp = new ICAL.Component(jcalData)
     const vevents = comp.getAllSubcomponents('vevent')
 
+    const ASSIGNMENT_KEYWORDS = ['提出', '課題', 'Assignment', 'Quiz', 'テスト', '試験', 'レポート', 'Report', '締切', 'Due']
+
     let added = 0
     let skipped = 0
+    let todos_added = 0
 
     for (const vevent of vevents) {
       const event = new ICAL.Event(vevent)
 
       const title = event.summary
-      const description = event.description || ''
+      const rawDescription = event.description || ''
+      const description = `[KLMS] ${rawDescription}`
       const startDate = event.startDate.toJSDate()
       const endDate = event.endDate?.toJSDate() || startDate
 
@@ -55,32 +59,66 @@ export async function POST(request: NextRequest) {
 
       if (existing) {
         skipped++
-        continue
+      } else {
+        // カレンダーイベントとして保存
+        const { error } = await supabase
+          .from('calendar_events')
+          .insert({
+            user_id: user.id,
+            title,
+            description,
+            start_date: startDate.toISOString(),
+            end_date: endDate.toISOString(),
+            is_visible: true,
+          })
+
+        if (error) {
+          console.error('Error inserting event:', error)
+          skipped++
+        } else {
+          added++
+        }
       }
 
-      // カレンダーイベントとして保存
-      const { error } = await supabase
-        .from('calendar_events')
-        .insert({
-          user_id: user.id,
-          title,
-          description,
-          start_date: startDate.toISOString(),
-          end_date: endDate.toISOString(),
-          is_visible: true,
-        })
+      // 課題系イベントの場合、todoも作成
+      const isAssignment = ASSIGNMENT_KEYWORDS.some(keyword =>
+        title.includes(keyword)
+      )
 
-      if (error) {
-        console.error('Error inserting event:', error)
-        skipped++
-      } else {
-        added++
+      if (isAssignment) {
+        // 既存のtodoをチェック（title + deadline + user_id）
+        const { data: existingTodo } = await supabase
+          .from('todos')
+          .select('id')
+          .eq('user_id', user.id)
+          .eq('title', title)
+          .eq('deadline', startDate.toISOString())
+          .single()
+
+        if (!existingTodo) {
+          const { error: todoError } = await supabase
+            .from('todos')
+            .insert({
+              user_id: user.id,
+              title,
+              description: `[KLMS] ${rawDescription}`,
+              deadline: startDate.toISOString(),
+              priority: 'high',
+              is_completed: false,
+            })
+
+          if (todoError) {
+            console.error('Error inserting todo:', todoError)
+          } else {
+            todos_added++
+          }
+        }
       }
     }
 
     return NextResponse.json({
       success: true,
-      results: { added, skipped, total: vevents.length }
+      results: { added, skipped, todos_added, total: vevents.length }
     })
 
   } catch (error: any) {

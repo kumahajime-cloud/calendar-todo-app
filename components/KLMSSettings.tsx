@@ -1,16 +1,57 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 
-export function KLMSSettings() {
+const STORAGE_KEY_URL = 'klms_calendar_url'
+const STORAGE_KEY_SAVE = 'klms_save_url'
+const STORAGE_KEY_LAST_SYNC = 'klms_last_sync'
+
+interface KLMSSettingsProps {
+  userId?: string
+}
+
+export function KLMSSettings({ userId }: KLMSSettingsProps) {
   const [calendarUrl, setCalendarUrl] = useState('')
+  const [saveUrl, setSaveUrl] = useState(true)
+  const [lastSync, setLastSync] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
   const [message, setMessage] = useState<{ type: 'success' | 'error' | 'info', text: string } | null>(null)
+
+  // localStorageから保存済みの値を読み込み
+  useEffect(() => {
+    const savedSave = localStorage.getItem(STORAGE_KEY_SAVE)
+    const shouldSave = savedSave !== 'false'
+    setSaveUrl(shouldSave)
+
+    if (shouldSave) {
+      const savedUrl = localStorage.getItem(STORAGE_KEY_URL)
+      if (savedUrl) setCalendarUrl(savedUrl)
+    }
+
+    const savedLastSync = localStorage.getItem(STORAGE_KEY_LAST_SYNC)
+    if (savedLastSync) setLastSync(savedLastSync)
+  }, [])
+
+  // URL保存設定の変更時
+  const handleSaveUrlChange = (checked: boolean) => {
+    setSaveUrl(checked)
+    localStorage.setItem(STORAGE_KEY_SAVE, String(checked))
+    if (checked) {
+      localStorage.setItem(STORAGE_KEY_URL, calendarUrl)
+    } else {
+      localStorage.removeItem(STORAGE_KEY_URL)
+    }
+  }
 
   const handleSync = async () => {
     if (!calendarUrl.trim()) {
       setMessage({ type: 'error', text: 'カレンダーURLを入力してください' })
       return
+    }
+
+    // URL保存が有効ならlocalStorageに保存
+    if (saveUrl) {
+      localStorage.setItem(STORAGE_KEY_URL, calendarUrl)
     }
 
     setLoading(true)
@@ -31,9 +72,13 @@ export function KLMSSettings() {
         throw new Error(data.error || '同期に失敗しました')
       }
 
+      const now = new Date().toISOString()
+      localStorage.setItem(STORAGE_KEY_LAST_SYNC, now)
+      setLastSync(now)
+
       setMessage({
         type: 'success',
-        text: `同期完了！ 追加: ${data.results.added}件、スキップ: ${data.results.skipped}件（全${data.results.total}件）`
+        text: `同期完了！ イベント追加: ${data.results.added}件、スキップ: ${data.results.skipped}件、TODO追加: ${data.results.todos_added}件（全${data.results.total}件）`
       })
     } catch (error: any) {
       setMessage({
@@ -62,7 +107,22 @@ export function KLMSSettings() {
             placeholder="https://lms.keio.jp/feeds/calendars/user_xxxxx.ics"
             className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
           />
+          <label className="flex items-center mt-2 text-sm text-gray-600 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={saveUrl}
+              onChange={(e) => handleSaveUrlChange(e.target.checked)}
+              className="mr-2 rounded border-gray-300"
+            />
+            URLを保存する
+          </label>
         </div>
+
+        {lastSync && (
+          <div className="text-sm text-gray-500">
+            最終同期: {new Date(lastSync).toLocaleString('ja-JP')}
+          </div>
+        )}
 
         <div className="bg-blue-50 border border-blue-200 rounded-md p-4">
           <h3 className="font-medium text-blue-900 mb-2">📝 カレンダーURLの取得方法</h3>
