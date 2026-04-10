@@ -33,8 +33,6 @@ export async function POST(request: NextRequest) {
     const comp = new ICAL.Component(jcalData)
     const vevents = comp.getAllSubcomponents('vevent')
 
-    const ASSIGNMENT_KEYWORDS = ['提出', '課題', 'Assignment', 'Quiz', 'テスト', '試験', 'レポート', 'Report', '締切', 'Due']
-
     let added = 0
     let skipped = 0
     let todos_added = 0
@@ -47,6 +45,11 @@ export async function POST(request: NextRequest) {
       const description = `[KLMS] ${rawDescription}`
       const startDate = event.startDate.toJSDate()
       const endDate = event.endDate?.toJSDate() || startDate
+
+      // UIDやURLからassignmentかどうかを判定
+      const uid = vevent.getFirstPropertyValue('uid') || ''
+      const url = vevent.getFirstPropertyValue('url') || ''
+      const isAssignment = String(uid).includes('assignment') || String(url).includes('assignment')
 
       // 既存のイベントをチェック
       const { data: existing } = await supabase
@@ -80,11 +83,7 @@ export async function POST(request: NextRequest) {
         }
       }
 
-      // 課題系イベントの場合、todoも作成
-      const isAssignment = ASSIGNMENT_KEYWORDS.some(keyword =>
-        title.includes(keyword)
-      )
-
+      // assignment系イベントの場合、todoも作成
       if (isAssignment) {
         // 既存のtodoをチェック（title + deadline + user_id）
         const { data: existingTodo } = await supabase
