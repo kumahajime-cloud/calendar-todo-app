@@ -43,8 +43,15 @@ export async function POST(request: NextRequest) {
       const title = event.summary
       const rawDescription = event.description || ''
       const description = `[KLMS] ${rawDescription}`
-      const startDate = event.startDate.toJSDate()
-      const endDate = event.endDate?.toJSDate() || startDate
+      let startDate = event.startDate.toJSDate()
+      let endDate = event.endDate?.toJSDate() || startDate
+
+      // 終日イベント（VALUE=DATE）の場合、締切を当日23:59に設定
+      const isAllDay = event.startDate.isDate
+      if (isAllDay) {
+        startDate = new Date(startDate.getFullYear(), startDate.getMonth(), startDate.getDate(), 23, 59, 0)
+        endDate = new Date(startDate)
+      }
 
       // UIDやURLからassignmentかどうかを判定
       const uid = vevent.getFirstPropertyValue('uid') || ''
