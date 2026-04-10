@@ -44,6 +44,10 @@ function getStorageKey(userId: string) {
   return `timetable_${userId}`
 }
 
+const DAY_NAME_TO_INDEX: Record<string, number> = {
+  '月': 0, '火': 1, '水': 2, '木': 3, '金': 4, '土': 5,
+}
+
 export default function TimetableView({ userId }: TimetableViewProps) {
   const [timetable, setTimetable] = useState<TimetableData>({})
   const [modalOpen, setModalOpen] = useState(false)
@@ -53,6 +57,10 @@ export default function TimetableView({ userId }: TimetableViewProps) {
   const [formTeacher, setFormTeacher] = useState('')
   const [isMobile, setIsMobile] = useState(false)
   const [selectedDay, setSelectedDay] = useState(0)
+  const [importing, setImporting] = useState(false)
+  const [showTokenInput, setShowTokenInput] = useState(false)
+  const [apiToken, setApiToken] = useState('')
+  const [importMessage, setImportMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
 
   useEffect(() => {
     const stored = localStorage.getItem(getStorageKey(userId))
@@ -63,7 +71,75 @@ export default function TimetableView({ userId }: TimetableViewProps) {
         setTimetable({})
       }
     }
+    // Load saved API token
+    const savedToken = localStorage.getItem(`klms_api_token_${userId}`)
+    if (savedToken) setApiToken(savedToken)
   }, [userId])
+
+  const handleImportFromKLMS = async () => {
+    if (!apiToken.trim()) {
+      setImportMessage({ type: 'error', text: 'APIトークンを入力してください' })
+      return
+    }
+
+    setImporting(true)
+    setImportMessage(null)
+
+    try {
+      const res = await fetch('/api/klms/courses', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ apiToken: apiToken.trim() }),
+      })
+
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error)
+
+      if (!data.timetable || data.timetable.length === 0) {
+        setImportMessage({ type: 'error', text: '時間割情報が見つかりませんでした' })
+        setImporting(false)
+        return
+      }
+
+      // Build timetable from API response
+      const newTimetable: TimetableData = { ...timetable }
+      let addedCount = 0
+      const colorMap: Record<string, string> = {}
+
+      for (const entry of data.timetable) {
+        const dayIndex = DAY_NAME_TO_INDEX[entry.day]
+        if (dayIndex === undefined) continue
+        const periodIndex = entry.period - 1 // API returns 1-based
+        if (periodIndex < 0 || periodIndex >= 6) continue
+
+        const key = `${dayIndex}-${periodIndex}`
+        if (newTimetable[key]) continue // Don't overwrite existing
+
+        // Use consistent color for same course
+        if (!colorMap[entry.name]) {
+          colorMap[entry.name] = getRandomPastelColor()
+        }
+
+        newTimetable[key] = {
+          name: entry.name,
+          room: entry.room || undefined,
+          teacher: entry.teacher || undefined,
+          color: colorMap[entry.name],
+        }
+        addedCount++
+      }
+
+      saveTimetable(newTimetable)
+      // Save token for future use
+      localStorage.setItem(`klms_api_token_${userId}`, apiToken.trim())
+      setImportMessage({ type: 'success', text: `K-LMSから ${addedCount} コマの授業を取得しました` })
+      setShowTokenInput(false)
+    } catch (error: any) {
+      setImportMessage({ type: 'error', text: error.message || '取得に失敗しました' })
+    } finally {
+      setImporting(false)
+    }
+  }
 
   useEffect(() => {
     const checkMobile = () => setIsMobile(window.innerWidth < 640)
@@ -127,11 +203,63 @@ export default function TimetableView({ userId }: TimetableViewProps) {
     setEditingCell(null)
   }
 
+  // Shared import UI
+  const importUI = (
+    <div className="mb-4">
+      {!showTokenInput ? (
+        <button
+          onClick={() => setShowTokenInput(true)}
+          className="px-4 py-2 text-sm font-medium text-white bg-[#1e3a8a] rounded-lg hover:bg-[#1e3a8a]/90 transition-colors"
+        >
+          K-LMSから自動取得
+        </button>
+      ) : (
+        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 space-y-3">
+          <p className="text-sm text-blue-800">
+            K-LMS → アカウント → 設定 → 「新しいアクセストークンの生成」でトークンを取得してください
+          </p>
+          <input
+            type="password"
+            value={apiToken}
+            onChange={(e) => setApiToken(e.target.value)}
+            placeholder="K-LMS APIトークン"
+            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#1e3a8a]/50"
+          />
+          <div className="flex gap-2">
+            <button
+              onClick={handleImportFromKLMS}
+              disabled={importing}
+              className="px-4 py-2 text-sm font-medium text-white bg-[#1e3a8a] rounded-lg hover:bg-[#1e3a8a]/90 disabled:opacity-50 transition-colors"
+            >
+              {importing ? '取得中...' : '取得する'}
+            </button>
+            <button
+              onClick={() => { setShowTokenInput(false); setImportMessage(null) }}
+              className="px-4 py-2 text-sm text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+            >
+              キャンセル
+            </button>
+          </div>
+        </div>
+      )}
+      {importMessage && (
+        <div className={`mt-2 p-3 rounded-lg text-sm ${
+          importMessage.type === 'success'
+            ? 'bg-green-50 text-green-800 border border-green-200'
+            : 'bg-red-50 text-red-800 border border-red-200'
+        }`}>
+          {importMessage.text}
+        </div>
+      )}
+    </div>
+  )
+
   // Mobile: show one day at a time
   if (isMobile) {
     return (
       <div className="p-2">
         <h2 className="text-lg font-bold text-[#1e3a8a] mb-3">時間割</h2>
+        {importUI}
 
         {/* Day selector */}
         <div className="flex gap-1 mb-3 overflow-x-auto">
@@ -207,6 +335,7 @@ export default function TimetableView({ userId }: TimetableViewProps) {
   return (
     <div className="p-4">
       <h2 className="text-xl font-bold text-[#1e3a8a] mb-4">時間割</h2>
+      {importUI}
 
       <div className="overflow-x-auto">
         <table className="w-full border-collapse min-w-[600px]">
@@ -322,7 +451,7 @@ function TimetableModal({
   const isEditing = !!timetable[cellKey(editingCell.day, editingCell.period)]
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={onClose}>
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60] p-4" onClick={onClose}>
       <div
         className="bg-white rounded-xl shadow-xl w-full max-w-md p-6"
         onClick={(e) => e.stopPropagation()}
