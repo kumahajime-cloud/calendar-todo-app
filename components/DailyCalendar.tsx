@@ -4,12 +4,10 @@ import { Database } from '@/lib/types/database.types'
 
 type CalendarEvent = Database['public']['Tables']['calendar_events']['Row']
 type Color = Database['public']['Tables']['colors']['Row']
-type Todo = Database['public']['Tables']['todos']['Row']
 
 interface DailyCalendarProps {
   currentDate: Date
   events: CalendarEvent[]
-  todos: Todo[]
   colors: Color[]
   onEventClick: (event: CalendarEvent) => void
 }
@@ -17,7 +15,6 @@ interface DailyCalendarProps {
 export default function DailyCalendar({
   currentDate,
   events,
-  todos,
   colors,
   onEventClick,
 }: DailyCalendarProps) {
@@ -34,20 +31,7 @@ export default function DailyCalendar({
     })
   }
 
-  const getDayTodos = () => {
-    return todos.filter((todo) => {
-      if (!todo.deadline) return false
-      const deadlineDate = new Date(todo.deadline)
-      return (
-        deadlineDate.getDate() === currentDate.getDate() &&
-        deadlineDate.getMonth() === currentDate.getMonth() &&
-        deadlineDate.getFullYear() === currentDate.getFullYear()
-      )
-    })
-  }
-
   const dayEvents = getDayEvents()
-  const dayTodos = getDayTodos()
 
   const getEventsForHour = (hour: number) => {
     return dayEvents.filter((event) => {
@@ -73,47 +57,9 @@ export default function DailyCalendar({
           })}
         </h3>
         <p className="text-sm text-gray-600 mt-1">
-          予定: {dayEvents.length}件 | Todo締切: {dayTodos.length}件
+          予定: {dayEvents.length}件
         </p>
       </div>
-
-      {/* Todos for the day */}
-      {dayTodos.length > 0 && (
-        <div className="p-4 bg-orange-50 border-b border-orange-200">
-          <h4 className="text-sm font-semibold text-orange-900 mb-2">本日締切のTodo</h4>
-          <div className="space-y-2">
-            {dayTodos.map((todo) => (
-              <div
-                key={todo.id}
-                className="p-2 bg-white rounded border-l-4 border-orange-500"
-              >
-                <div className="flex items-start justify-between">
-                  <div className="flex-1">
-                    <span className={`font-medium ${todo.is_completed ? 'line-through text-gray-500' : 'text-gray-900'}`}>
-                      {todo.title}
-                    </span>
-                    {!todo.is_completed && (
-                      <span className="ml-2 text-xs px-2 py-1 bg-orange-100 text-orange-800 rounded">
-                        未完了
-                      </span>
-                    )}
-                  </div>
-                  <span className={`text-xs px-2 py-1 rounded ${
-                    todo.priority === 'high' ? 'bg-red-100 text-red-800' :
-                    todo.priority === 'medium' ? 'bg-yellow-100 text-yellow-800' :
-                    'bg-green-100 text-green-800'
-                  }`}>
-                    {todo.priority === 'high' ? '高' : todo.priority === 'medium' ? '中' : '低'}
-                  </span>
-                </div>
-                {todo.description && (
-                  <p className="text-sm text-gray-600 mt-1">{todo.description}</p>
-                )}
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
 
       <div className="overflow-y-auto" style={{ maxHeight: '600px' }}>
         {hours.map((hour) => {
@@ -125,12 +71,10 @@ export default function DailyCalendar({
               className="border-b border-gray-200 hover:bg-gray-50 transition-colors"
             >
               <div className="flex">
-                {/* Time column */}
                 <div className="w-20 p-3 text-sm text-gray-600 font-medium border-r border-gray-200">
                   {hour.toString().padStart(2, '0')}:00
                 </div>
 
-                {/* Events column */}
                 <div className="flex-1 p-2 min-h-[60px]">
                   {hourEvents.length > 0 ? (
                     <div className="space-y-2">
@@ -191,7 +135,6 @@ export default function DailyCalendar({
                     </div>
                   ) : (
                     <div className="h-full flex items-center justify-center text-gray-400 text-sm">
-                      {/* Empty slot */}
                     </div>
                   )}
                 </div>

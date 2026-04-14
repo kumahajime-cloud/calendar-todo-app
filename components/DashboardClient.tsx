@@ -243,12 +243,7 @@ export default function DashboardClient({ user }: DashboardClientProps) {
       {/* Main Content */}
       <main className={view === 'calendar' ? 'py-3 md:py-8' : 'max-w-7xl mx-auto px-2 sm:px-6 lg:px-8 py-3 md:py-8'}>
         {view === 'calendar' && (
-          <>
-            <div className="max-w-7xl mx-auto px-2 sm:px-6 lg:px-8 mb-3">
-              <DeadlineCountdown userId={user.id} />
-            </div>
-            <CalendarView userId={user.id} />
-          </>
+          <CalendarView userId={user.id} />
         )}
         {view === 'todo' && <TodoList userId={user.id} />}
         {view === 'klms' && <KLMSView userId={user.id} />}
