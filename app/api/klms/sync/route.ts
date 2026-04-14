@@ -11,7 +11,7 @@ export async function POST(request: NextRequest) {
     const { data: { user } } = await supabase.auth.getUser()
 
     if (!user) {
-      return NextResponse.json({ error: '認証が必要です' }, { status: 401 })
+      return NextResponse.json({ error: 'ログインセッションが切れています。ページを再読み込みしてください。' }, { status: 401 })
     }
 
     const { calendarUrl } = await request.json()
