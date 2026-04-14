@@ -75,6 +75,7 @@ export function KLMSSettings({ userId }: KLMSSettingsProps) {
         headers: {
           'Content-Type': 'application/json',
         },
+        credentials: 'include',
         body: JSON.stringify({ calendarUrl }),
       })
 
@@ -115,6 +116,7 @@ export function KLMSSettings({ userId }: KLMSSettingsProps) {
       const res = await fetch('/api/klms/assignments', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify({ apiToken: apiToken.trim() }),
       })
 
