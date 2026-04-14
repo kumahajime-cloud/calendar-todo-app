@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import MonthlyCalendar from './MonthlyCalendar'
 import DailyCalendar from './DailyCalendar'

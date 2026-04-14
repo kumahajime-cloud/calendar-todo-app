@@ -8,7 +8,6 @@ import KLMSView from './KLMSView'
 import UniversityCalendarView from './UniversityCalendarView'
 import SettingsView from './SettingsView'
 import FeedbackModal from './FeedbackModal'
-import DeadlineCountdown from './DeadlineCountdown'
 import TimetableView from './TimetableView'
 import CreditTracker from './CreditTracker'
 

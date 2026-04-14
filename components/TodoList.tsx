@@ -180,7 +180,7 @@ export default function TodoList({ userId }: TodoListProps) {
     return groups
   }
 
-  const filteredTodos = getFilteredTodos()
+  const filteredTodos = useMemo(() => getFilteredTodos(), [todos, selectedCategory, showCompleted])
   const completedCount = todos.filter((t) => t.is_completed).length
   const totalCount = todos.length
   const todoGroups = useMemo(() => groupTodosByDeadline(filteredTodos), [filteredTodos])

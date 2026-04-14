@@ -666,6 +666,40 @@ function WeeklyCalendarView({ userId }: { userId: string }) {
 
   const dayLabels = ['月', '火', '水', '木', '金', '土', '日']
 
+  // Calculate column assignment for overlapping events
+  const getEventColumns = (dayEvents: CalendarEvent[]) => {
+    const columns: CalendarEvent[][] = []
+    const eventColumns = new Map<string, number>()
+
+    const sorted = [...dayEvents].sort((a, b) =>
+      new Date(a.start_date).getTime() - new Date(b.start_date).getTime()
+    )
+
+    sorted.forEach((event) => {
+      let col = 0
+      let placed = false
+      while (!placed) {
+        if (!columns[col]) columns[col] = []
+        const overlaps = columns[col].some((ex) => {
+          const s1 = new Date(event.start_date).getTime()
+          const e1 = new Date(event.end_date).getTime()
+          const s2 = new Date(ex.start_date).getTime()
+          const e2 = new Date(ex.end_date).getTime()
+          return s1 < e2 && s2 < e1
+        })
+        if (!overlaps) {
+          columns[col].push(event)
+          eventColumns.set(event.id, col)
+          placed = true
+        } else {
+          col++
+        }
+      }
+    })
+
+    return { eventColumns, maxColumns: Math.max(columns.length, 1) }
+  }
+
   const weekLabel = (() => {
     const s = weekDays[0]
     const e = weekDays[6]
@@ -747,6 +781,7 @@ function WeeklyCalendarView({ userId }: { userId: string }) {
 
                 {weekDays.map((date, dayIndex) => {
                   const dayEvents = getEventsForDay(date)
+                  const { eventColumns, maxColumns } = getEventColumns(dayEvents)
                   const today = isToday(date)
 
                   return (
@@ -776,6 +811,9 @@ function WeeklyCalendarView({ userId }: { userId: string }) {
 
                         const top = (clampedStart - START_HOUR) * HOUR_HEIGHT
                         const height = (clampedEnd - clampedStart) * HOUR_HEIGHT
+                        const colIndex = eventColumns.get(event.id) || 0
+                        const width = `${100 / maxColumns}%`
+                        const left = `${(colIndex / maxColumns) * 100}%`
 
                         return (
                           <div
@@ -784,8 +822,8 @@ function WeeklyCalendarView({ userId }: { userId: string }) {
                             style={{
                               top: `${top}px`,
                               height: `${Math.max(height, 20)}px`,
-                              width: '100%',
-                              left: 0,
+                              width,
+                              left,
                               backgroundColor: color?.hex_code || '#94a3b8',
                               zIndex: 10,
                               padding: '2px 4px',
