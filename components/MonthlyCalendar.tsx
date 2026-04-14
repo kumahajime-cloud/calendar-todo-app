@@ -1,46 +1,70 @@
 'use client'
 
+import { useRef } from 'react'
 import { Database } from '@/lib/types/database.types'
 
 type CalendarEvent = Database['public']['Tables']['calendar_events']['Row']
 type Color = Database['public']['Tables']['colors']['Row']
-type Todo = Database['public']['Tables']['todos']['Row']
 
 interface MonthlyCalendarProps {
   currentDate: Date
   events: CalendarEvent[]
-  todos: Todo[]
   colors: Color[]
   onEventClick: (event: CalendarEvent) => void
   onDateClick: (date: Date) => void
+  onSwipeLeft?: () => void
+  onSwipeRight?: () => void
 }
 
 export default function MonthlyCalendar({
   currentDate,
   events,
-  todos,
   colors,
   onEventClick,
   onDateClick,
+  onSwipeLeft,
+  onSwipeRight,
 }: MonthlyCalendarProps) {
   const year = currentDate.getFullYear()
   const month = currentDate.getMonth()
 
-  // Get first day of month and number of days
+  // Swipe handling
+  const touchStartX = useRef<number | null>(null)
+  const touchStartY = useRef<number | null>(null)
+
+  const handleTouchStart = (e: React.TouchEvent) => {
+    touchStartX.current = e.touches[0].clientX
+    touchStartY.current = e.touches[0].clientY
+  }
+
+  const handleTouchEnd = (e: React.TouchEvent) => {
+    if (touchStartX.current === null || touchStartY.current === null) return
+
+    const deltaX = e.changedTouches[0].clientX - touchStartX.current
+    const deltaY = e.changedTouches[0].clientY - touchStartY.current
+
+    // Only trigger if horizontal swipe is dominant and distance > 50px
+    if (Math.abs(deltaX) > 50 && Math.abs(deltaX) > Math.abs(deltaY) * 1.5) {
+      if (deltaX < 0 && onSwipeLeft) {
+        onSwipeLeft()
+      } else if (deltaX > 0 && onSwipeRight) {
+        onSwipeRight()
+      }
+    }
+
+    touchStartX.current = null
+    touchStartY.current = null
+  }
+
   const firstDay = new Date(year, month, 1)
   const lastDay = new Date(year, month + 1, 0)
   const daysInMonth = lastDay.getDate()
   const startingDayOfWeek = firstDay.getDay()
 
-  // Create calendar grid
   const calendarDays: (Date | null)[] = []
-
-  // Add empty cells for days before month starts
   for (let i = 0; i < startingDayOfWeek; i++) {
     calendarDays.push(null)
   }
-
-  // Add days of the month
   for (let day = 1; day <= daysInMonth; day++) {
     calendarDays.push(new Date(year, month, day))
   }
@@ -52,18 +76,6 @@ export default function MonthlyCalendar({
         eventDate.getDate() === date.getDate() &&
         eventDate.getMonth() === date.getMonth() &&
         eventDate.getFullYear() === date.getFullYear()
-      )
-    })
-  }
-
-  const getTodosForDate = (date: Date) => {
-    return todos.filter((todo) => {
-      if (!todo.deadline) return false
-      const deadlineDate = new Date(todo.deadline)
-      return (
-        deadlineDate.getDate() === date.getDate() &&
-        deadlineDate.getMonth() === date.getMonth() &&
-        deadlineDate.getFullYear() === date.getFullYear()
       )
     })
   }
@@ -83,7 +95,11 @@ export default function MonthlyCalendar({
   }
 
   return (
-    <div className="bg-white shadow overflow-hidden md:max-w-7xl md:mx-auto md:rounded-lg mb-4 md:mb-0">
+    <div
+      className="bg-white shadow overflow-hidden md:max-w-7xl md:mx-auto md:rounded-lg mb-4 md:mb-0"
+      onTouchStart={handleTouchStart}
+      onTouchEnd={handleTouchEnd}
+    >
       {/* Weekday headers */}
       <div className="grid grid-cols-7 bg-gray-50 border-b">
         {['日', '月', '火', '水', '木', '金', '土'].map((day, index) => (
@@ -106,10 +122,9 @@ export default function MonthlyCalendar({
           }
 
           const dayEvents = getEventsForDate(date)
-          const dayTodos = getTodosForDate(date)
           const today = isToday(date)
           const dayOfWeek = date.getDay()
-          const totalItems = dayEvents.length + dayTodos.length
+          const maxVisible = 3
 
           return (
             <div
@@ -133,10 +148,9 @@ export default function MonthlyCalendar({
                 {date.getDate()}
               </div>
 
-              {/* Events and Todos for this day */}
+              {/* Events for this day */}
               <div className="space-y-0.5 md:space-y-1">
-                {/* Events */}
-                {dayEvents.slice(0, 1).map((event) => {
+                {dayEvents.slice(0, maxVisible).map((event) => {
                   const color = getColorById(event.color_id)
                   return (
                     <div
@@ -163,25 +177,9 @@ export default function MonthlyCalendar({
                   )
                 })}
 
-                {/* Todos */}
-                {dayTodos.slice(0, Math.max(0, 2 - dayEvents.length)).map((todo) => {
-                  return (
-                    <div
-                      key={`todo-${todo.id}`}
-                      className="text-[10px] md:text-xs p-0.5 md:p-1 rounded truncate bg-orange-50 border-l-2 border-orange-500"
-                      style={{
-                        borderLeft: '2px solid #f97316',
-                      }}
-                      title={`Todo: ${todo.title}`}
-                    >
-                      {todo.title}
-                    </div>
-                  )
-                })}
-
-                {totalItems > 2 && (
+                {dayEvents.length > maxVisible && (
                   <div className="text-[10px] md:text-xs text-gray-500 pl-0.5 md:pl-1">
-                    +{totalItems - 2}
+                    +{dayEvents.length - maxVisible}
                   </div>
                 )}
               </div>

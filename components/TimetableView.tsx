@@ -1,6 +1,11 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
+import { createClient } from '@/lib/supabase/client'
+import { Database } from '@/lib/types/database.types'
+
+type CalendarEvent = Database['public']['Tables']['calendar_events']['Row']
+type Color = Database['public']['Tables']['colors']['Row']
 
 interface TimetableClass {
   name: string
@@ -49,6 +54,7 @@ const DAY_NAME_TO_INDEX: Record<string, number> = {
 }
 
 export default function TimetableView({ userId }: TimetableViewProps) {
+  const [tabMode, setTabMode] = useState<'weekly' | 'register'>('weekly')
   const [timetable, setTimetable] = useState<TimetableData>({})
   const [modalOpen, setModalOpen] = useState(false)
   const [editingCell, setEditingCell] = useState<{ day: number; period: number } | null>(null)
@@ -254,11 +260,45 @@ export default function TimetableView({ userId }: TimetableViewProps) {
     </div>
   )
 
+  // Tab switcher (shared between mobile/desktop)
+  const tabSwitcher = (
+    <div className="flex gap-1 bg-gray-100 rounded-lg p-1 mb-4">
+      <button
+        onClick={() => setTabMode('weekly')}
+        className={`flex-1 px-4 py-2 text-sm font-medium rounded-md transition-colors ${
+          tabMode === 'weekly' ? 'bg-white text-[#1e3a8a] shadow' : 'text-gray-600'
+        }`}
+      >
+        週間カレンダー
+      </button>
+      <button
+        onClick={() => setTabMode('register')}
+        className={`flex-1 px-4 py-2 text-sm font-medium rounded-md transition-colors ${
+          tabMode === 'register' ? 'bg-white text-[#1e3a8a] shadow' : 'text-gray-600'
+        }`}
+      >
+        時間割登録
+      </button>
+    </div>
+  )
+
+  // Weekly calendar view
+  if (tabMode === 'weekly') {
+    return (
+      <div className="p-2 md:p-4">
+        <h2 className="text-lg md:text-xl font-bold text-[#1e3a8a] mb-3 md:mb-4">時間割</h2>
+        {tabSwitcher}
+        <WeeklyCalendarView userId={userId} />
+      </div>
+    )
+  }
+
   // Mobile: show one day at a time
   if (isMobile) {
     return (
       <div className="p-2">
         <h2 className="text-lg font-bold text-[#1e3a8a] mb-3">時間割</h2>
+        {tabSwitcher}
         {importUI}
 
         {/* Day selector */}
@@ -335,6 +375,7 @@ export default function TimetableView({ userId }: TimetableViewProps) {
   return (
     <div className="p-4">
       <h2 className="text-xl font-bold text-[#1e3a8a] mb-4">時間割</h2>
+      {tabSwitcher}
       {importUI}
 
       <div className="overflow-x-auto">
@@ -524,6 +565,289 @@ function TimetableModal({
           >
             {isEditing ? '更新' : '追加'}
           </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// Weekly Calendar View (Penmark-style)
+function WeeklyCalendarView({ userId }: { userId: string }) {
+  const [currentDate, setCurrentDate] = useState(new Date())
+  const [events, setEvents] = useState<CalendarEvent[]>([])
+  const [colors, setColors] = useState<Color[]>([])
+  const supabase = createClient()
+
+  // 週間表示はコンパクトに50px/h（日表示DailyCalendarは60px/hでゆったり表示）
+  const HOUR_HEIGHT = 50
+  const START_HOUR = 6
+  const END_HOUR = 22
+  const hours = Array.from({ length: END_HOUR - START_HOUR }, (_, i) => i + START_HOUR)
+
+  const getWeekStart = (date: Date) => {
+    const d = new Date(date)
+    const day = d.getDay()
+    const diff = day === 0 ? -6 : 1 - day
+    d.setDate(d.getDate() + diff)
+    d.setHours(0, 0, 0, 0)
+    return d
+  }
+
+  const weekStart = useMemo(() => getWeekStart(currentDate), [currentDate])
+  const weekDays = useMemo(() => Array.from({ length: 7 }, (_, i) => {
+    const d = new Date(weekStart)
+    d.setDate(d.getDate() + i)
+    return d
+  }), [weekStart])
+
+  useEffect(() => {
+    loadEvents()
+    loadColors()
+  }, [currentDate, userId])
+
+  const loadEvents = async () => {
+    const start = weekDays[0]
+    const end = new Date(weekDays[6])
+    end.setHours(23, 59, 59)
+
+    const { data, error } = await supabase
+      .from('calendar_events')
+      .select('*')
+      .eq('user_id', userId)
+      .gte('start_date', start.toISOString())
+      .lte('start_date', end.toISOString())
+      .order('start_date', { ascending: true })
+
+    if (error) {
+      console.error('[WeeklyCalendar] Error loading events:', error)
+    } else {
+      setEvents(data)
+    }
+  }
+
+  const loadColors = async () => {
+    const { data, error } = await supabase
+      .from('colors')
+      .select('*')
+      .eq('user_id', userId)
+      .order('created_at', { ascending: true })
+
+    if (error) {
+      console.error('[WeeklyCalendar] Error loading colors:', error)
+    } else {
+      setColors(data)
+    }
+  }
+
+  const getColorById = (colorId: string | null) => {
+    if (!colorId) return null
+    return colors.find((c) => c.id === colorId)
+  }
+
+  const getEventsForDay = (date: Date) => {
+    return events.filter((event) => {
+      const eventDate = new Date(event.start_date)
+      return (
+        eventDate.getDate() === date.getDate() &&
+        eventDate.getMonth() === date.getMonth() &&
+        eventDate.getFullYear() === date.getFullYear()
+      )
+    })
+  }
+
+  const isToday = (date: Date) => {
+    const today = new Date()
+    return (
+      date.getDate() === today.getDate() &&
+      date.getMonth() === today.getMonth() &&
+      date.getFullYear() === today.getFullYear()
+    )
+  }
+
+  const dayLabels = ['月', '火', '水', '木', '金', '土', '日']
+
+  // Calculate column assignment for overlapping events
+  const getEventColumns = (dayEvents: CalendarEvent[]) => {
+    const columns: CalendarEvent[][] = []
+    const eventColumns = new Map<string, number>()
+
+    const sorted = [...dayEvents].sort((a, b) =>
+      new Date(a.start_date).getTime() - new Date(b.start_date).getTime()
+    )
+
+    sorted.forEach((event) => {
+      let col = 0
+      let placed = false
+      while (!placed) {
+        if (!columns[col]) columns[col] = []
+        const overlaps = columns[col].some((ex) => {
+          const s1 = new Date(event.start_date).getTime()
+          const e1 = new Date(event.end_date).getTime()
+          const s2 = new Date(ex.start_date).getTime()
+          const e2 = new Date(ex.end_date).getTime()
+          return s1 < e2 && s2 < e1
+        })
+        if (!overlaps) {
+          columns[col].push(event)
+          eventColumns.set(event.id, col)
+          placed = true
+        } else {
+          col++
+        }
+      }
+    })
+
+    return { eventColumns, maxColumns: Math.max(columns.length, 1) }
+  }
+
+  const weekLabel = (() => {
+    const s = weekDays[0]
+    const e = weekDays[6]
+    if (s.getMonth() === e.getMonth()) {
+      return `${s.getFullYear()}年 ${s.getMonth() + 1}月 ${s.getDate()}日 〜 ${e.getDate()}日`
+    }
+    return `${s.getMonth() + 1}/${s.getDate()} 〜 ${e.getMonth() + 1}/${e.getDate()}`
+  })()
+
+  return (
+    <div className="space-y-4">
+      {/* Controls */}
+      <div className="flex items-center gap-2">
+        <button
+          onClick={() => { const d = new Date(currentDate); d.setDate(d.getDate() - 7); setCurrentDate(d) }}
+          className="p-2 rounded hover:bg-gray-100"
+        >
+          ←
+        </button>
+        <button
+          onClick={() => setCurrentDate(new Date())}
+          className="px-3 py-2 text-sm font-medium text-gray-700 bg-gray-100 rounded hover:bg-gray-200"
+        >
+          今週
+        </button>
+        <button
+          onClick={() => { const d = new Date(currentDate); d.setDate(d.getDate() + 7); setCurrentDate(d) }}
+          className="p-2 rounded hover:bg-gray-100"
+        >
+          →
+        </button>
+        <h3 className="text-sm md:text-lg font-bold ml-2">{weekLabel}</h3>
+      </div>
+
+      {/* Weekly timetable */}
+      <div className="bg-white rounded-lg shadow overflow-hidden">
+        <div className="overflow-x-auto">
+          <div className="min-w-[700px]">
+            {/* Day headers */}
+            <div className="grid grid-cols-[60px_repeat(7,1fr)] border-b border-gray-200 sticky top-0 bg-white z-20">
+              <div className="p-2 border-r border-gray-200" />
+              {weekDays.map((date, i) => {
+                const today = isToday(date)
+                const dayOfWeek = date.getDay()
+                return (
+                  <div
+                    key={i}
+                    className={`p-2 text-center border-r border-gray-200 ${today ? 'bg-blue-50' : ''}`}
+                  >
+                    <div className={`text-xs font-semibold ${
+                      dayOfWeek === 0 ? 'text-red-600' : dayOfWeek === 6 ? 'text-blue-600' : 'text-gray-500'
+                    }`}>
+                      {dayLabels[i]}
+                    </div>
+                    <div className={`text-lg font-bold ${
+                      today ? 'text-blue-600' : dayOfWeek === 0 ? 'text-red-600' : dayOfWeek === 6 ? 'text-blue-600' : 'text-gray-900'
+                    }`}>
+                      {date.getDate()}
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+
+            {/* Time grid */}
+            <div className="overflow-y-auto" style={{ maxHeight: '600px' }}>
+              <div className="grid grid-cols-[60px_repeat(7,1fr)]" style={{ height: `${hours.length * HOUR_HEIGHT}px` }}>
+                <div className="relative border-r border-gray-200">
+                  {hours.map((hour) => (
+                    <div
+                      key={hour}
+                      className="absolute w-full text-right pr-2 text-xs text-gray-500 font-medium"
+                      style={{ top: `${(hour - START_HOUR) * HOUR_HEIGHT}px`, height: `${HOUR_HEIGHT}px` }}
+                    >
+                      {hour.toString().padStart(2, '0')}:00
+                    </div>
+                  ))}
+                </div>
+
+                {weekDays.map((date, dayIndex) => {
+                  const dayEvents = getEventsForDay(date)
+                  const { eventColumns, maxColumns } = getEventColumns(dayEvents)
+                  const today = isToday(date)
+
+                  return (
+                    <div
+                      key={dayIndex}
+                      className={`relative border-r border-gray-200 ${today ? 'bg-blue-50/30' : ''}`}
+                    >
+                      {hours.map((hour) => (
+                        <div
+                          key={`grid-${hour}`}
+                          className="absolute w-full border-b border-gray-100"
+                          style={{ top: `${(hour - START_HOUR) * HOUR_HEIGHT}px`, height: `${HOUR_HEIGHT}px` }}
+                        />
+                      ))}
+
+                      {dayEvents.map((event) => {
+                        const color = getColorById(event.color_id)
+                        const startTime = new Date(event.start_date)
+                        const endTime = new Date(event.end_date)
+
+                        const startHour = startTime.getHours() + startTime.getMinutes() / 60
+                        const endHour = endTime.getHours() + endTime.getMinutes() / 60
+
+                        const clampedStart = Math.max(startHour, START_HOUR)
+                        const clampedEnd = Math.min(endHour, END_HOUR)
+                        if (clampedEnd <= clampedStart) return null
+
+                        const top = (clampedStart - START_HOUR) * HOUR_HEIGHT
+                        const height = (clampedEnd - clampedStart) * HOUR_HEIGHT
+                        const colIndex = eventColumns.get(event.id) || 0
+                        const width = `${100 / maxColumns}%`
+                        const left = `${(colIndex / maxColumns) * 100}%`
+
+                        return (
+                          <div
+                            key={event.id}
+                            className="absolute rounded-md overflow-hidden"
+                            style={{
+                              top: `${top}px`,
+                              height: `${Math.max(height, 20)}px`,
+                              width,
+                              left,
+                              backgroundColor: color?.hex_code || '#94a3b8',
+                              zIndex: 10,
+                              padding: '2px 4px',
+                            }}
+                          >
+                            <div className="text-[10px] font-bold text-white truncate leading-tight">
+                              {event.title}
+                            </div>
+                            {height > 30 && (
+                              <div className="text-[9px] text-white/80 truncate">
+                                {startTime.toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' })}
+                                {' - '}
+                                {endTime.toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' })}
+                              </div>
+                            )}
+                          </div>
+                        )
+                      })}
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          </div>
         </div>
       </div>
     </div>

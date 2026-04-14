@@ -10,7 +10,6 @@ import { Database } from '@/lib/types/database.types'
 
 type CalendarEvent = Database['public']['Tables']['calendar_events']['Row']
 type Color = Database['public']['Tables']['colors']['Row']
-type Todo = Database['public']['Tables']['todos']['Row']
 
 interface CalendarViewProps {
   userId: string
@@ -20,7 +19,6 @@ export default function CalendarView({ userId }: CalendarViewProps) {
   const [viewMode, setViewMode] = useState<'month' | 'day'>('month')
   const [currentDate, setCurrentDate] = useState(new Date())
   const [events, setEvents] = useState<CalendarEvent[]>([])
-  const [todos, setTodos] = useState<Todo[]>([])
   const [colors, setColors] = useState<Color[]>([])
   const [filteredColorIds, setFilteredColorIds] = useState<Set<string>>(new Set())
   const [isEventModalOpen, setIsEventModalOpen] = useState(false)
@@ -31,7 +29,6 @@ export default function CalendarView({ userId }: CalendarViewProps) {
 
   useEffect(() => {
     loadEvents()
-    loadTodos()
     loadColors()
   }, [currentDate, viewMode, userId])
 
@@ -39,7 +36,6 @@ export default function CalendarView({ userId }: CalendarViewProps) {
     const startDate = new Date(currentDate.getFullYear(), currentDate.getMonth(), 1)
     const endDate = new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 0)
 
-    console.log('[Calendar] Loading events for user:', userId)
     const { data, error } = await supabase
       .from('calendar_events')
       .select('*')
@@ -51,26 +47,7 @@ export default function CalendarView({ userId }: CalendarViewProps) {
     if (error) {
       console.error('[Calendar] Error loading events:', error)
     } else {
-      console.log('[Calendar] Loaded events:', data?.length, 'events')
       setEvents(data)
-    }
-  }
-
-  const loadTodos = async () => {
-    const startDate = new Date(currentDate.getFullYear(), currentDate.getMonth(), 1)
-    const endDate = new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 0)
-
-    const { data, error } = await supabase
-      .from('todos')
-      .select('*')
-      .eq('user_id', userId)
-      .not('deadline', 'is', null)
-      .gte('deadline', startDate.toISOString())
-      .lte('deadline', endDate.toISOString())
-      .order('deadline', { ascending: true })
-
-    if (!error && data) {
-      setTodos(data)
     }
   }
 
@@ -81,7 +58,9 @@ export default function CalendarView({ userId }: CalendarViewProps) {
       .eq('user_id', userId)
       .order('created_at', { ascending: true })
 
-    if (!error && data) {
+    if (error) {
+      console.error('[Calendar] Error loading colors:', error)
+    } else {
       setColors(data)
     }
   }
@@ -97,12 +76,16 @@ export default function CalendarView({ userId }: CalendarViewProps) {
   }
 
   const getFilteredEvents = () => {
-    if (filteredColorIds.size === 0) {
-      return events.filter(e => e.is_visible)
+    let filtered = events
+
+    // is_visible が false の予定は両ビューで非表示
+    filtered = filtered.filter(e => e.is_visible)
+
+    if (filteredColorIds.size > 0) {
+      filtered = filtered.filter(e => e.color_id && filteredColorIds.has(e.color_id))
     }
-    return events.filter(
-      e => e.is_visible && e.color_id && filteredColorIds.has(e.color_id)
-    )
+
+    return filtered
   }
 
   const handleEventClick = (event: CalendarEvent) => {
@@ -119,7 +102,6 @@ export default function CalendarView({ userId }: CalendarViewProps) {
 
   const handleEventSave = async () => {
     await loadEvents()
-    await loadTodos()
     setIsEventModalOpen(false)
     setSelectedEvent(null)
     setSelectedDate(null)
@@ -128,7 +110,6 @@ export default function CalendarView({ userId }: CalendarViewProps) {
   const handleColorsUpdate = async () => {
     await loadColors()
     await loadEvents()
-    await loadTodos()
   }
 
   const goToPreviousPeriod = () => {
@@ -192,7 +173,6 @@ export default function CalendarView({ userId }: CalendarViewProps) {
               カラー管理
             </button>
 
-            {/* Desktop only: 予定追加 button */}
             <button
               onClick={() => {
                 setSelectedDate(new Date())
@@ -252,16 +232,16 @@ export default function CalendarView({ userId }: CalendarViewProps) {
         <MonthlyCalendar
           currentDate={currentDate}
           events={filteredEvents}
-          todos={todos}
           colors={colors}
           onEventClick={handleEventClick}
           onDateClick={handleDateClick}
+          onSwipeLeft={goToNextPeriod}
+          onSwipeRight={goToPreviousPeriod}
         />
       ) : (
         <DailyCalendar
           currentDate={currentDate}
           events={filteredEvents}
-          todos={todos}
           colors={colors}
           onEventClick={handleEventClick}
         />
@@ -293,7 +273,6 @@ export default function CalendarView({ userId }: CalendarViewProps) {
 
       {/* Mobile Floating Controls */}
       <div className="md:hidden fixed bottom-24 right-6 flex items-center gap-3 z-40">
-        {/* View Mode Toggle */}
         <div className="flex gap-1 bg-white rounded-full shadow-lg p-1">
           <button
             onClick={() => setViewMode('month')}
@@ -317,7 +296,6 @@ export default function CalendarView({ userId }: CalendarViewProps) {
           </button>
         </div>
 
-        {/* Add Event Button */}
         <button
           onClick={() => {
             setSelectedDate(viewMode === 'day' ? currentDate : new Date())
