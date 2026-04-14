@@ -15,7 +15,7 @@ interface TimetableClass {
 }
 
 interface TimetableData {
-  [key: string]: TimetableClass // key: "day-period" e.g. "0-0" = Mon 1st period
+  [key: string]: TimetableClass
 }
 
 interface TimetableViewProps {
@@ -23,9 +23,17 @@ interface TimetableViewProps {
 }
 
 const DAYS = ['月', '火', '水', '木', '金', '土'] as const
-const DAYS_EN = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'] as const
 
 const PERIODS = [
+  { label: '1', time: '9:25' },
+  { label: '2', time: '11:10' },
+  { label: '3', time: '13:30' },
+  { label: '4', time: '15:15' },
+  { label: '5', time: '17:00' },
+  { label: '6', time: '18:45' },
+] as const
+
+const PERIODS_FULL = [
   { label: '1限', time: '9:25-10:55' },
   { label: '2限', time: '11:10-12:40' },
   { label: '3限', time: '13:30-15:00' },
@@ -61,15 +69,16 @@ export default function TimetableView({ userId }: TimetableViewProps) {
   const [formName, setFormName] = useState('')
   const [formRoom, setFormRoom] = useState('')
   const [formTeacher, setFormTeacher] = useState('')
-  const [isMobile, setIsMobile] = useState(false)
-  const [selectedDay, setSelectedDay] = useState(() => {
-    const d = new Date().getDay()
-    return d === 0 ? 0 : d - 1 // Default to today's day (Mon=0)
-  })
   const [importing, setImporting] = useState(false)
   const [showTokenInput, setShowTokenInput] = useState(false)
   const [apiToken, setApiToken] = useState('')
   const [importMessage, setImportMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
+
+  // Get today's day index (0=Mon, 5=Sat, -1=Sun)
+  const todayDayIndex = (() => {
+    const d = new Date().getDay()
+    return d === 0 ? -1 : d - 1
+  })()
 
   useEffect(() => {
     const stored = localStorage.getItem(getStorageKey(userId))
@@ -80,7 +89,6 @@ export default function TimetableView({ userId }: TimetableViewProps) {
         setTimetable({})
       }
     }
-    // Load saved API token
     const savedToken = localStorage.getItem(`klms_api_token_${userId}`)
     if (savedToken) setApiToken(savedToken)
   }, [userId])
@@ -111,7 +119,6 @@ export default function TimetableView({ userId }: TimetableViewProps) {
         return
       }
 
-      // Build timetable from API response
       const newTimetable: TimetableData = { ...timetable }
       let addedCount = 0
       const colorMap: Record<string, string> = {}
@@ -119,13 +126,12 @@ export default function TimetableView({ userId }: TimetableViewProps) {
       for (const entry of data.timetable) {
         const dayIndex = DAY_NAME_TO_INDEX[entry.day]
         if (dayIndex === undefined) continue
-        const periodIndex = entry.period - 1 // API returns 1-based
+        const periodIndex = entry.period - 1
         if (periodIndex < 0 || periodIndex >= 6) continue
 
         const key = `${dayIndex}-${periodIndex}`
-        if (newTimetable[key]) continue // Don't overwrite existing
+        if (newTimetable[key]) continue
 
-        // Use consistent color for same course
         if (!colorMap[entry.name]) {
           colorMap[entry.name] = getRandomPastelColor()
         }
@@ -140,7 +146,6 @@ export default function TimetableView({ userId }: TimetableViewProps) {
       }
 
       saveTimetable(newTimetable)
-      // Save token for future use
       localStorage.setItem(`klms_api_token_${userId}`, apiToken.trim())
       setImportMessage({ type: 'success', text: `K-LMSから ${addedCount} コマの授業を取得しました` })
       setShowTokenInput(false)
@@ -150,13 +155,6 @@ export default function TimetableView({ userId }: TimetableViewProps) {
       setImporting(false)
     }
   }
-
-  useEffect(() => {
-    const checkMobile = () => setIsMobile(window.innerWidth < 640)
-    checkMobile()
-    window.addEventListener('resize', checkMobile)
-    return () => window.removeEventListener('resize', checkMobile)
-  }, [])
 
   const saveTimetable = useCallback((data: TimetableData) => {
     setTimetable(data)
@@ -213,7 +211,7 @@ export default function TimetableView({ userId }: TimetableViewProps) {
     setEditingCell(null)
   }
 
-  // Shared import UI
+  // Import UI
   const importUI = (
     <div className="mb-4">
       {!showTokenInput ? (
@@ -264,13 +262,7 @@ export default function TimetableView({ userId }: TimetableViewProps) {
     </div>
   )
 
-  // Get today's day index (0=Mon, 5=Sat, -1=Sun)
-  const todayDayIndex = (() => {
-    const d = new Date().getDay() // 0=Sun, 1=Mon, ..., 6=Sat
-    return d === 0 ? -1 : d - 1 // Mon=0, Tue=1, ..., Sat=5, Sun=-1
-  })()
-
-  // Tab switcher (shared between mobile/desktop)
+  // Tab switcher
   const tabSwitcher = (
     <div className="flex gap-1 bg-gray-100 rounded-lg p-1 mb-4">
       <button
@@ -303,105 +295,33 @@ export default function TimetableView({ userId }: TimetableViewProps) {
     )
   }
 
-  // Mobile: show one day at a time
-  if (isMobile) {
-    return (
-      <div className="p-2">
-        <h2 className="text-lg font-bold text-[#1e3a8a] mb-3">時間割</h2>
-        {tabSwitcher}
-        {importUI}
-
-        {/* Day selector */}
-        <div className="flex gap-1 mb-3 overflow-x-auto">
-          {DAYS.map((day, i) => (
-            <button
-              key={i}
-              onClick={() => setSelectedDay(i)}
-              className={`flex-1 min-w-[40px] py-2 text-sm font-medium rounded-lg transition-colors ${
-                selectedDay === i
-                  ? 'bg-[#1e3a8a] text-white'
-                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-              }`}
-            >
-              {day}
-            </button>
-          ))}
-        </div>
-
-        {/* Period list for selected day */}
-        <div className="space-y-2">
-          {PERIODS.map((period, pi) => {
-            const cls = timetable[cellKey(selectedDay, pi)]
-            return (
-              <button
-                key={pi}
-                onClick={() => handleCellClick(selectedDay, pi)}
-                className="w-full text-left rounded-lg border border-gray-200 p-3 transition-colors hover:border-[#1e3a8a]/30"
-                style={cls ? { backgroundColor: cls.color + '40', borderColor: cls.color } : undefined}
-              >
-                <div className="flex items-center gap-3">
-                  <div className="text-xs text-gray-500 w-20 shrink-0">
-                    <div className="font-medium text-gray-700">{period.label}</div>
-                    <div>{period.time}</div>
-                  </div>
-                  {cls ? (
-                    <div className="min-w-0">
-                      <div className="font-medium text-gray-900 truncate">{cls.name}</div>
-                      <div className="text-xs text-gray-600 truncate">
-                        {[cls.room, cls.teacher].filter(Boolean).join(' / ')}
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="text-sm text-gray-400">タップして追加</div>
-                  )}
-                </div>
-              </button>
-            )
-          })}
-        </div>
-
-        {/* Modal */}
-        {modalOpen && (
-          <TimetableModal
-            editingCell={editingCell}
-            timetable={timetable}
-            formName={formName}
-            formRoom={formRoom}
-            formTeacher={formTeacher}
-            setFormName={setFormName}
-            setFormRoom={setFormRoom}
-            setFormTeacher={setFormTeacher}
-            onSave={handleSave}
-            onDelete={handleDelete}
-            onClose={handleModalClose}
-            cellKey={cellKey}
-          />
-        )}
-      </div>
-    )
-  }
-
-  // Desktop: full table
+  // ===== Timetable registration mode =====
+  // Both mobile and desktop: Penmark-style full-week grid
   return (
-    <div className="p-4">
-      <h2 className="text-xl font-bold text-[#1e3a8a] mb-4">時間割</h2>
+    <div className="p-2 md:p-4">
+      <h2 className="text-lg md:text-xl font-bold text-[#1e3a8a] mb-3 md:mb-4">時間割</h2>
       {tabSwitcher}
       {importUI}
 
-      <div className="overflow-x-auto">
-        <table className="w-full border-collapse min-w-[600px]">
+      {/* Penmark-style timetable grid — works on both mobile & desktop */}
+      <div className="bg-white rounded-lg shadow overflow-hidden">
+        <table className="w-full border-collapse table-fixed">
           <thead>
             <tr>
-              <th className="w-20 p-2 text-xs text-gray-500 border border-gray-200 bg-gray-50"></th>
+              {/* Time column header */}
+              <th className="w-[40px] md:w-[70px] p-1 md:p-2 text-[10px] md:text-xs text-gray-400 border-b border-r border-gray-200 bg-gray-50" />
               {DAYS.map((day, i) => (
                 <th
                   key={i}
-                  className={`p-2 text-sm font-semibold border border-gray-200 ${
-                    i === todayDayIndex ? 'bg-blue-50 text-[#1e3a8a]' : 'bg-gray-50 text-[#1e3a8a]'
+                  className={`p-1 md:p-2 text-center border-b border-r border-gray-200 ${
+                    i === todayDayIndex ? 'bg-blue-100' : 'bg-gray-50'
                   }`}
                 >
-                  <div className={i === todayDayIndex ? 'text-[#1e3a8a] font-bold' : ''}>{day}</div>
-                  <div className={`text-xs font-normal ${i === todayDayIndex ? 'text-[#1e3a8a]/60' : 'text-gray-400'}`}>{DAYS_EN[i]}</div>
+                  <div className={`text-xs md:text-sm font-bold ${
+                    i === todayDayIndex ? 'text-[#1e3a8a]' : 'text-gray-700'
+                  }`}>
+                    {day}
+                  </div>
                 </th>
               ))}
             </tr>
@@ -409,9 +329,10 @@ export default function TimetableView({ userId }: TimetableViewProps) {
           <tbody>
             {PERIODS.map((period, pi) => (
               <tr key={pi}>
-                <td className="p-2 text-center border border-gray-200 bg-gray-50">
-                  <div className="text-xs font-medium text-gray-700">{period.label}</div>
-                  <div className="text-[10px] text-gray-400">{period.time}</div>
+                {/* Time label */}
+                <td className="p-0.5 md:p-2 text-center border-b border-r border-gray-200 bg-gray-50 align-top">
+                  <div className="text-[10px] md:text-xs font-bold text-gray-600">{period.label}</div>
+                  <div className="text-[9px] md:text-[10px] text-gray-400 leading-tight">{period.time}</div>
                 </td>
                 {DAYS.map((_, di) => {
                   const cls = timetable[cellKey(di, pi)]
@@ -420,29 +341,23 @@ export default function TimetableView({ userId }: TimetableViewProps) {
                     <td
                       key={di}
                       onClick={() => handleCellClick(di, pi)}
-                      className={`border border-gray-200 p-1 h-20 align-top cursor-pointer transition-colors hover:bg-blue-50 ${
-                        isTodayCol && !cls ? 'bg-blue-50/40' : ''
+                      className={`border-b border-r border-gray-200 p-0.5 md:p-1 align-top cursor-pointer transition-colors h-[72px] md:h-[80px] ${
+                        isTodayCol && !cls ? 'bg-blue-50/50' : !cls ? 'bg-gray-50/30' : ''
                       }`}
-                      style={cls ? { backgroundColor: cls.color + (isTodayCol ? '60' : '40') } : undefined}
+                      style={cls ? { backgroundColor: cls.color + (isTodayCol ? '70' : '50') } : undefined}
                     >
                       {cls ? (
-                        <div className="p-1">
-                          <div
-                            className="text-xs font-medium text-gray-900 leading-tight truncate"
-                            title={cls.name}
-                          >
+                        <div className="h-full flex flex-col justify-center px-0.5">
+                          <div className="text-[10px] md:text-xs font-semibold text-gray-900 leading-tight line-clamp-2">
                             {cls.name}
                           </div>
                           {cls.room && (
-                            <div className="text-[10px] text-gray-600 truncate mt-0.5">{cls.room}</div>
-                          )}
-                          {cls.teacher && (
-                            <div className="text-[10px] text-gray-500 truncate">{cls.teacher}</div>
+                            <div className="text-[8px] md:text-[10px] text-gray-600 mt-0.5 truncate">{cls.room}</div>
                           )}
                         </div>
                       ) : (
-                        <div className="flex items-center justify-center h-full">
-                          <span className="text-gray-300 text-lg">+</span>
+                        <div className="h-full flex items-center justify-center">
+                          <span className="text-gray-300 text-xs md:text-base">+</span>
                         </div>
                       )}
                     </td>
@@ -513,9 +428,9 @@ function TimetableModal({
         onClick={(e) => e.stopPropagation()}
       >
         <h3 className="text-lg font-bold text-[#1e3a8a] mb-4">
-          {DAYS[editingCell.day]} {PERIODS[editingCell.period].label}
+          {DAYS[editingCell.day]} {PERIODS_FULL[editingCell.period].label}
           <span className="text-sm font-normal text-gray-500 ml-2">
-            {PERIODS[editingCell.period].time}
+            {PERIODS_FULL[editingCell.period].time}
           </span>
         </h3>
 
@@ -586,14 +501,13 @@ function TimetableModal({
   )
 }
 
-// Weekly Calendar View (Penmark-style)
+// Weekly Calendar View
 function WeeklyCalendarView({ userId }: { userId: string }) {
   const [currentDate, setCurrentDate] = useState(new Date())
   const [events, setEvents] = useState<CalendarEvent[]>([])
   const [colors, setColors] = useState<Color[]>([])
   const supabase = createClient()
 
-  // 週間表示はコンパクトに50px/h（日表示DailyCalendarは60px/hでゆったり表示）
   const HOUR_HEIGHT = 50
   const START_HOUR = 6
   const END_HOUR = 22
@@ -681,7 +595,6 @@ function WeeklyCalendarView({ userId }: { userId: string }) {
 
   const dayLabels = ['月', '火', '水', '木', '金', '土', '日']
 
-  // Calculate column assignment for overlapping events
   const getEventColumns = (dayEvents: CalendarEvent[]) => {
     const columns: CalendarEvent[][] = []
     const eventColumns = new Map<string, number>()
@@ -726,7 +639,6 @@ function WeeklyCalendarView({ userId }: { userId: string }) {
 
   return (
     <div className="space-y-4">
-      {/* Controls */}
       <div className="flex items-center gap-2">
         <button
           onClick={() => { const d = new Date(currentDate); d.setDate(d.getDate() - 7); setCurrentDate(d) }}
@@ -749,11 +661,9 @@ function WeeklyCalendarView({ userId }: { userId: string }) {
         <h3 className="text-sm md:text-lg font-bold ml-2">{weekLabel}</h3>
       </div>
 
-      {/* Weekly timetable */}
       <div className="bg-white rounded-lg shadow overflow-hidden">
         <div className="overflow-x-auto">
           <div className="min-w-[700px]">
-            {/* Day headers */}
             <div className="grid grid-cols-[60px_repeat(7,1fr)] border-b border-gray-200 sticky top-0 bg-white z-20">
               <div className="p-2 border-r border-gray-200" />
               {weekDays.map((date, i) => {
@@ -779,7 +689,6 @@ function WeeklyCalendarView({ userId }: { userId: string }) {
               })}
             </div>
 
-            {/* Time grid */}
             <div className="overflow-y-auto" style={{ maxHeight: '600px' }}>
               <div className="grid grid-cols-[60px_repeat(7,1fr)]" style={{ height: `${hours.length * HOUR_HEIGHT}px` }}>
                 <div className="relative border-r border-gray-200">
