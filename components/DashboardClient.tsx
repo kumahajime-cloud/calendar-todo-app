@@ -43,6 +43,7 @@ export default function DashboardClient({ user }: DashboardClientProps) {
     fetch('/api/klms/sync', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
       body: JSON.stringify({ calendarUrl: klmsUrl }),
     })
       .then(async (res) => {

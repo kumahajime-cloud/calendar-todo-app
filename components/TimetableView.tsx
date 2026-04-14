@@ -54,7 +54,7 @@ const DAY_NAME_TO_INDEX: Record<string, number> = {
 }
 
 export default function TimetableView({ userId }: TimetableViewProps) {
-  const [tabMode, setTabMode] = useState<'weekly' | 'register'>('weekly')
+  const [tabMode, setTabMode] = useState<'register' | 'weekly'>('register')
   const [timetable, setTimetable] = useState<TimetableData>({})
   const [modalOpen, setModalOpen] = useState(false)
   const [editingCell, setEditingCell] = useState<{ day: number; period: number } | null>(null)
@@ -62,7 +62,10 @@ export default function TimetableView({ userId }: TimetableViewProps) {
   const [formRoom, setFormRoom] = useState('')
   const [formTeacher, setFormTeacher] = useState('')
   const [isMobile, setIsMobile] = useState(false)
-  const [selectedDay, setSelectedDay] = useState(0)
+  const [selectedDay, setSelectedDay] = useState(() => {
+    const d = new Date().getDay()
+    return d === 0 ? 0 : d - 1 // Default to today's day (Mon=0)
+  })
   const [importing, setImporting] = useState(false)
   const [showTokenInput, setShowTokenInput] = useState(false)
   const [apiToken, setApiToken] = useState('')
@@ -95,6 +98,7 @@ export default function TimetableView({ userId }: TimetableViewProps) {
       const res = await fetch('/api/klms/courses', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify({ apiToken: apiToken.trim() }),
       })
 
@@ -260,24 +264,30 @@ export default function TimetableView({ userId }: TimetableViewProps) {
     </div>
   )
 
+  // Get today's day index (0=Mon, 5=Sat, -1=Sun)
+  const todayDayIndex = (() => {
+    const d = new Date().getDay() // 0=Sun, 1=Mon, ..., 6=Sat
+    return d === 0 ? -1 : d - 1 // Mon=0, Tue=1, ..., Sat=5, Sun=-1
+  })()
+
   // Tab switcher (shared between mobile/desktop)
   const tabSwitcher = (
     <div className="flex gap-1 bg-gray-100 rounded-lg p-1 mb-4">
-      <button
-        onClick={() => setTabMode('weekly')}
-        className={`flex-1 px-4 py-2 text-sm font-medium rounded-md transition-colors ${
-          tabMode === 'weekly' ? 'bg-white text-[#1e3a8a] shadow' : 'text-gray-600'
-        }`}
-      >
-        週間カレンダー
-      </button>
       <button
         onClick={() => setTabMode('register')}
         className={`flex-1 px-4 py-2 text-sm font-medium rounded-md transition-colors ${
           tabMode === 'register' ? 'bg-white text-[#1e3a8a] shadow' : 'text-gray-600'
         }`}
       >
-        時間割登録
+        時間割
+      </button>
+      <button
+        onClick={() => setTabMode('weekly')}
+        className={`flex-1 px-4 py-2 text-sm font-medium rounded-md transition-colors ${
+          tabMode === 'weekly' ? 'bg-white text-[#1e3a8a] shadow' : 'text-gray-600'
+        }`}
+      >
+        週間予定
       </button>
     </div>
   )
@@ -386,10 +396,12 @@ export default function TimetableView({ userId }: TimetableViewProps) {
               {DAYS.map((day, i) => (
                 <th
                   key={i}
-                  className="p-2 text-sm font-semibold text-[#1e3a8a] border border-gray-200 bg-gray-50"
+                  className={`p-2 text-sm font-semibold border border-gray-200 ${
+                    i === todayDayIndex ? 'bg-blue-50 text-[#1e3a8a]' : 'bg-gray-50 text-[#1e3a8a]'
+                  }`}
                 >
-                  <div>{day}</div>
-                  <div className="text-xs font-normal text-gray-400">{DAYS_EN[i]}</div>
+                  <div className={i === todayDayIndex ? 'text-[#1e3a8a] font-bold' : ''}>{day}</div>
+                  <div className={`text-xs font-normal ${i === todayDayIndex ? 'text-[#1e3a8a]/60' : 'text-gray-400'}`}>{DAYS_EN[i]}</div>
                 </th>
               ))}
             </tr>
@@ -403,12 +415,15 @@ export default function TimetableView({ userId }: TimetableViewProps) {
                 </td>
                 {DAYS.map((_, di) => {
                   const cls = timetable[cellKey(di, pi)]
+                  const isTodayCol = di === todayDayIndex
                   return (
                     <td
                       key={di}
                       onClick={() => handleCellClick(di, pi)}
-                      className="border border-gray-200 p-1 h-20 align-top cursor-pointer transition-colors hover:bg-blue-50"
-                      style={cls ? { backgroundColor: cls.color + '40' } : undefined}
+                      className={`border border-gray-200 p-1 h-20 align-top cursor-pointer transition-colors hover:bg-blue-50 ${
+                        isTodayCol && !cls ? 'bg-blue-50/40' : ''
+                      }`}
+                      style={cls ? { backgroundColor: cls.color + (isTodayCol ? '60' : '40') } : undefined}
                     >
                       {cls ? (
                         <div className="p-1">
